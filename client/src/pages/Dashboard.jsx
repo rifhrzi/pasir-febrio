@@ -135,6 +135,7 @@ function TableSection({ title, type }) {
   const [categoryKey, setCategoryKey] = useState(presetOptions[0]?.label || '__custom');
   const [customCategory, setCustomCategory] = useState('');
   const [incomeForm, setIncomeForm] = useState(defaultIncomeForm);
+  const [confirmItem, setConfirmItem] = useState(null);
 
   const currentProduct = incomeProducts[incomeForm.productKey];
   const currentTruck = currentProduct?.trucks[incomeForm.truckKey];
@@ -241,6 +242,12 @@ function TableSection({ title, type }) {
   const handleDelete = async id => {
     await api.delete(`${endpoints[type]}/${id}`);
     fetchItems();
+  };
+
+  const confirmDelete = async () => {
+    if (!confirmItem) return;
+    await handleDelete(confirmItem.id);
+    setConfirmItem(null);
   };
 
   const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -516,11 +523,7 @@ function TableSection({ title, type }) {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button
-                    onClick={() => {
-                      if (window.confirm('Hapus data ini?')) {
-                        handleDelete(item.id);
-                      }
-                    }}
+                    onClick={() => setConfirmItem({ id: item.id, category: item.category, amount: item.amount, date: item.trans_date })}
                     className="text-sm font-medium text-rose-600 transition hover:text-rose-700"
                   >
                     Delete
@@ -531,6 +534,32 @@ function TableSection({ title, type }) {
           </tbody>
         </table>
       </div>
+      {confirmItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Confirm deletion</p>
+            <h3 className="mt-2 text-2xl font-semibold text-slate-900">Hapus data ini?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              {formatDate(confirmItem.date)} · {confirmItem.category}
+            </p>
+            <p className="text-base font-semibold text-rose-600">{formatCurrency(confirmItem.amount)}</p>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={confirmDelete}
+                className="flex-1 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-600/30 transition hover:opacity-95"
+              >
+                Ya, hapus
+              </button>
+              <button
+                onClick={() => setConfirmItem(null)}
+                className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

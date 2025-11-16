@@ -17,6 +17,7 @@ services:
       PORT: 4000
       DATABASE_URL: postgres://postgres:postgres@db:5432/pasir_finance
       JWT_SECRET: supersecretkey
+      EXPORT_TEMPLATE_PATH: /app/templates/export_template.xlsx
     ports:
       - "4000:4000"
     depends_on:
