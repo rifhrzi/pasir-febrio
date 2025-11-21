@@ -4,9 +4,9 @@ import axios from 'axios';
 import fileDownload from 'js-file-download';
 
 const endpoints = {
-  incomes: '/api/incomes',
-  expenses: '/api/expenses',
-  loans: '/api/loans'
+  incomes: '/incomes',
+  expenses: '/expenses',
+  loans: '/loans'
 };
 
 const POTONGAN_LABELS = {
@@ -121,9 +121,24 @@ const parseIncomeDescription = value => {
 function TableSection({ title, type }) {
   const isIncome = type === 'incomes';
   const token = localStorage.getItem('token');
-  const api = axios.create({ headers: { Authorization: `Bearer ${token}` } });
-  const apiAuth = axios.create({ headers: { Authorization: `Bearer ${token}` } });
+  const api = axios.create({ baseURL: '/api', headers: { Authorization: `Bearer ${token}` } });
+  const apiAuth = axios.create({ baseURL: '/api', headers: { Authorization: `Bearer ${token}` } });
   const presetOptions = ledgerPresets[type] || [];
+
+  useEffect(() => {
+    if (!token) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+  }, [token]);
+
+  const handleAuthError = error => {
+    if (error?.response && [401, 403].includes(error.response.status)) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    throw error;
+  };
 
   const [items, setItems] = useState([]);
   const [basicForm, setBasicForm] = useState(() => ({
@@ -164,8 +179,12 @@ function TableSection({ title, type }) {
   }, [grossAmount, totalDeductions, isIncome]);
 
   const fetchItems = async () => {
-    const { data } = await api.get(endpoints[type]);
-    setItems(data);
+    try {
+      const { data } = await api.get(endpoints[type]);
+      setItems(data);
+    } catch (err) {
+      handleAuthError(err);
+    }
   };
 
   useEffect(() => { fetchItems(); }, []);
@@ -180,8 +199,12 @@ function TableSection({ title, type }) {
   }, [isIncome, incomeForm.productKey, incomeForm.truckKey]);
 
   const handleExport = async format => {
-    const { data } = await apiAuth.get('/api/export/all', { params: { format }, responseType: 'blob' });
-    fileDownload(data, `export_${Date.now()}.${format}`);
+    try {
+      const { data } = await apiAuth.get('/export/all', { params: { format }, responseType: 'blob' });
+      fileDownload(data, `export_${Date.now()}.${format}`);
+    } catch (err) {
+      handleAuthError(err);
+    }
   };
 
   const submitIncome = async () => {
@@ -231,17 +254,25 @@ function TableSection({ title, type }) {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    if (isIncome) {
-      await submitIncome();
-    } else {
-      await submitLedger();
+    try {
+      if (isIncome) {
+        await submitIncome();
+      } else {
+        await submitLedger();
+      }
+      fetchItems();
+    } catch (err) {
+      handleAuthError(err);
     }
-    fetchItems();
   };
 
   const handleDelete = async id => {
-    await api.delete(`${endpoints[type]}/${id}`);
-    fetchItems();
+    try {
+      await api.delete(`${endpoints[type]}/${id}`);
+      fetchItems();
+    } catch (err) {
+      handleAuthError(err);
+    }
   };
 
   const confirmDelete = async () => {
@@ -611,9 +642,8 @@ export default function Dashboard() {
               <button
                 key={t.key}
                 onClick={() => setActive(t.key)}
-                className={`rounded-full px-5 py-2 text-sm font-medium transition ${
-                  active === t.key ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-900'
-                }`}
+                className={`rounded-full px-5 py-2 text-sm font-medium transition ${active === t.key ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-900'
+                  }`}
               >
                 {t.label}
               </button>
