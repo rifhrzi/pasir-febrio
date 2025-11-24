@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { query } from '../db.js';
 
-const DEFAULT_TEMPLATE_PATH = path.resolve(process.cwd(), 'server', 'templates', 'export_template.xlsx');
+const DEFAULT_TEMPLATE_PATH = path.resolve(process.cwd(), 'templates', 'export_template.xlsx');
 
 export async function exportData({ type = 'all', format = 'xlsx', templatePath }) {
   const sections = [];
@@ -116,6 +116,7 @@ function mapHeaderToKey(header) {
 }
 
 function applyTemplate({ sheet, incomes, expenses, loans }) {
+  populateIncomeTable(sheet, incomes);
   populateExpenseTable(sheet, expenses);
   populateSummaries(sheet, {
     incomes,
@@ -125,17 +126,39 @@ function applyTemplate({ sheet, incomes, expenses, loans }) {
   populateLoanNotes(sheet, loans);
 }
 
+function populateIncomeTable(sheet, rows = []) {
+  // Incomes don't have a dedicated table section in the template
+  // They're aggregated and shown in the summary section only
+  // Individual income entries could be added if template is updated
+}
+
 function populateExpenseTable(sheet, rows = []) {
   const headerRow = findRowIndex(sheet, value => value && value.toString().trim().toUpperCase() === 'NO');
-  if (!headerRow) return;
-  const dataStart = headerRow + 2; // skip header + sub-header
-  const footerRow = findRowIndex(sheet, value => includesText(value, 'pengeluaran'), dataStart) || dataStart;
+  if (!headerRow) {
+    console.log('Could not find NO header row');
+    return;
+  }
+  
+  const dataStart = headerRow + 2; // skip header + sub-header (row 6 in template)
+  
+  // Find the first row after dataStart that should NOT be removed
+  // This is typically a row with "Pengeluaran" in column 7 or later
+  let footerRow = dataStart;
+  for (let i = dataStart; i <= sheet.rowCount; i++) {
+    const row = sheet.getRow(i);
+    const col7 = getCellText(row.getCell(7).value);
+    if (includesText(col7, 'pengeluaran') || includesText(col7, 'pendapatan')) {
+      footerRow = i;
+      break;
+    }
+  }
+  
   const rowsToRemove = Math.max(footerRow - dataStart, 0);
   if (rowsToRemove) {
     sheet.spliceRows(dataStart, rowsToRemove);
   }
 
-  const payload = (rows.length ? rows : [{ category: 'Tidak ada data', amount: 0 }]).map((entry, idx) => [
+  const payload = (rows.length ? rows : []).map((entry, idx) => [
     idx + 1,
     formatExpenseLabel(entry),
     null,
@@ -158,31 +181,40 @@ function populateSummaries(sheet, { incomes = [], expenses = [], loans = [] }) {
   const sisaPendapatan = totalIncome - totalExpense;
   const sisaKas = sisaPendapatan - totalLoans;
 
+  // Update all summary fields
   updateLabelAndValue(sheet, 'Pendapatan', totalIncome);
   updateLabelAndValue(sheet, 'Pengeluaran', totalExpense);
   updateLabelAndValue(sheet, 'Sisa Pendapatan', sisaPendapatan);
   updateLabelAndValue(sheet, 'Sisa Kas', sisaKas);
+  
+  // Update total hutang if it exists in template
+  if (totalLoans > 0) {
+    updateLabelAndValue(sheet, 'Total Hutang', totalLoans);
+  }
 }
 
 function populateLoanNotes(sheet, loans = []) {
-  const startRow = findRowIndex(sheet, value => includesText(value, 'catatan hutang'));
+  const startRow = findRowIndex(sheet, value => includesText(value, 'catatan hutang') && includesText(value, 'belum dibayar'));
   if (!startRow) return;
-  const nextSection = findRowIndex(sheet, value => includesText(value, 'catatan pembahasan') || includesText(value, 'catatan beban'), startRow + 1);
-  const removeCount = nextSection ? Math.max(nextSection - (startRow + 1), 0) : 0;
-  if (removeCount) {
-    sheet.spliceRows(startRow + 1, removeCount);
+  
+  // Find where loan items should end (before "Total Hutang" or next section)
+  const totalHutangRow = findRowIndex(sheet, value => includesText(value, 'total hutang'), startRow + 1);
+  const nextSection = findRowIndex(sheet, value => includesText(value, 'catatan pembahasan'), startRow + 1);
+  const endRow = totalHutangRow || nextSection;
+  
+  if (endRow) {
+    const removeCount = Math.max(endRow - (startRow + 1), 0);
+    if (removeCount > 0) {
+      sheet.spliceRows(startRow + 1, removeCount);
+    }
   }
 
-  const payload = (loans.length ? loans : [{ category: 'Tidak ada hutang', amount: 0 }]).map((entry, idx) => [
-    null,
-    formatLoanLabel(entry, idx),
-    formatRupiahText(entry.amount || 0),
-    null,
-    null,
-    null,
-    null,
-    null
-  ]);
+  const payload = (loans.length ? loans : [{ category: 'Tidak ada hutang', amount: 0 }]).map((entry, idx) => {
+    const rowData = new Array(10).fill(null);
+    rowData[1] = formatLoanLabel(entry, idx); // Column B (index 1)
+    rowData[2] = formatRupiahText(entry.amount || 0); // Column C (index 2)
+    return rowData;
+  });
 
   if (payload.length) {
     sheet.spliceRows(startRow + 1, 0, ...payload);
@@ -192,11 +224,27 @@ function populateLoanNotes(sheet, loans = []) {
 function updateLabelAndValue(sheet, label, amount) {
   const cells = findCells(sheet, value => includesText(value, label));
   const formatted = formatRupiahText(amount);
+  
   cells.forEach(({ row, col }) => {
     const cell = sheet.getCell(row, col);
-    if (col === 1) {
+    const currentValue = cell.value;
+    const currentText = getCellText(currentValue);
+    
+    // Check if this is a merged cell with formatted text (like row 3)
+    if (currentText && currentText.includes('Rp')) {
+      // Update the entire formatted string, preserving rich text if needed
+      if (currentValue && currentValue.richText) {
+        cell.value = {
+          richText: [{ font: currentValue.richText[0].font, text: `${label.toUpperCase()} ${formatted}` }]
+        };
+      } else {
+        cell.value = `${label.toUpperCase()} ${formatted}`;
+      }
+    } else if (col === 1) {
+      // Column A - update with formatted text
       cell.value = `${label.toUpperCase()} ${formatted}`;
     } else {
+      // Other columns - just update the label, value goes in next column
       cell.value = label;
       const valueCell = sheet.getCell(row, col + 1);
       valueCell.value = Number(amount || 0);
@@ -204,13 +252,25 @@ function updateLabelAndValue(sheet, label, amount) {
   });
 }
 
+function getCellText(cellValue) {
+  if (!cellValue) return '';
+  if (typeof cellValue === 'string') return cellValue;
+  if (typeof cellValue === 'number') return cellValue.toString();
+  if (cellValue.richText) {
+    return cellValue.richText.map(t => t.text).join('');
+  }
+  if (cellValue.text) return cellValue.text;
+  return cellValue.toString();
+}
+
 function findRowIndex(sheet, predicate, startRow = 1) {
   for (let i = startRow; i <= sheet.rowCount; i++) {
     const row = sheet.getRow(i);
     if (!row) continue;
     for (let j = 1; j <= row.cellCount; j++) {
-      const value = row.getCell(j).value;
-      if (predicate(value, i, j)) {
+      const cellValue = row.getCell(j).value;
+      const textValue = getCellText(cellValue);
+      if (predicate(textValue, i, j)) {
         return i;
       }
     }
@@ -222,7 +282,8 @@ function findCells(sheet, predicate) {
   const cells = [];
   sheet.eachRow((row, rowNumber) => {
     row.eachCell((cell, colNumber) => {
-      if (predicate(cell.value, rowNumber, colNumber)) {
+      const textValue = getCellText(cell.value);
+      if (predicate(textValue, rowNumber, colNumber)) {
         cells.push({ row: rowNumber, col: colNumber });
       }
     });

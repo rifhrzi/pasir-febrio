@@ -27,6 +27,18 @@ export default function Layout({ children }) {
           <NavLink to="/" end className={navClass}>
             Dashboard
           </NavLink>
+          <NavLink to="/income" className={navClass}>
+            Income
+          </NavLink>
+          <NavLink to="/expense" className={navClass}>
+            Expense
+          </NavLink>
+          <NavLink to="/loans" className={navClass}>
+            Loans
+          </NavLink>
+          <NavLink to="/revenue" className={navClass}>
+            Revenue
+          </NavLink>
         </nav>
 
         <button
