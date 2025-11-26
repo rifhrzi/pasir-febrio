@@ -1,6 +1,7 @@
 import Layout from '../components/Layout.jsx';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config.js';
 
 const expensePresets = [
   { label: 'Alat', hint: 'Biaya peralatan dan maintenance' },
@@ -25,7 +26,7 @@ const formatDate = value => {
 
 export default function Expense() {
   const token = localStorage.getItem('token');
-  const api = axios.create({ baseURL: '/api', headers: { Authorization: `Bearer ${token}` } });
+  const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
 
   useEffect(() => {
     if (!token) {
@@ -56,7 +57,7 @@ export default function Expense() {
   const fetchItems = async () => {
     try {
       const { data } = await api.get('/expenses');
-      setItems(data);
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       handleAuthError(err);
     }

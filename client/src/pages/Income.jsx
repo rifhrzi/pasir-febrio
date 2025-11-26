@@ -1,6 +1,7 @@
 import Layout from '../components/Layout.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config.js';
 
 const POTONGAN_LABELS = {
   loading: 'Loading',
@@ -78,7 +79,7 @@ const parseIncomeDescription = value => {
 
 export default function Income() {
   const token = localStorage.getItem('token');
-  const api = axios.create({ baseURL: '/api', headers: { Authorization: `Bearer ${token}` } });
+  const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
 
   useEffect(() => {
     if (!token) {
@@ -124,7 +125,7 @@ export default function Income() {
   const fetchItems = async () => {
     try {
       const { data } = await api.get('/incomes');
-      setItems(data);
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       handleAuthError(err);
     }

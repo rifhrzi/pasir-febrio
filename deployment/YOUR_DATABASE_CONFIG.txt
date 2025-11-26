@@ -1,0 +1,67 @@
+================================================================================
+YOUR SUPABASE DATABASE CONFIGURATION
+================================================================================
+
+Database Connection String:
+postgresql://postgres:tres1221@db.uoddaqiwpdudgmovatbr.supabase.co:5432/postgres
+
+Database Details:
+- Host: db.uoddaqiwpdudgmovatbr.supabase.co
+- Port: 5432
+- Database: postgres
+- Username: postgres
+- Password: tres1221
+
+Status: ✅ READY TO USE
+
+================================================================================
+NEXT STEPS:
+================================================================================
+
+1. Setup Database Tables
+   - Go to https://supabase.com/dashboard
+   - Click "SQL Editor"
+   - Run the SQL from railway-setup.md
+
+2. Deploy Backend to Railway
+   - Go to https://railway.app
+   - Create new project
+   - Add environment variables (see below)
+
+3. Test Connection
+   - Visit: https://your-backend.railway.app/api/health
+
+================================================================================
+ENVIRONMENT VARIABLES FOR RAILWAY
+================================================================================
+
+Copy these to Railway Variables section:
+
+PORT
+4000
+
+NODE_ENV
+production
+
+DATABASE_URL
+postgresql://postgres:tres1221@db.uoddaqiwpdudgmovatbr.supabase.co:5432/postgres
+
+JWT_SECRET
+pasir_finance_super_secret_key_change_in_production_123456789
+
+EXPORT_TEMPLATE_PATH
+/app/templates/export_template.xlsx
+
+================================================================================
+DEFAULT LOGIN CREDENTIALS
+================================================================================
+
+After running database setup:
+
+Username: admin
+Password: admin123
+
+(Change these in production!)
+
+================================================================================
+

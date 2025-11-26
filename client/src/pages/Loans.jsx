@@ -1,6 +1,7 @@
 import Layout from '../components/Layout.jsx';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config.js';
 
 const loansPresets = [
   { label: 'Pra-penjualan: Deposit 350jt (1.000 rit tronton)', hint: 'Pinjaman dari orang tua' },
@@ -27,7 +28,7 @@ const formatDate = value => {
 
 export default function Loans() {
   const token = localStorage.getItem('token');
-  const api = axios.create({ baseURL: '/api', headers: { Authorization: `Bearer ${token}` } });
+  const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
 
   useEffect(() => {
     if (!token) {
@@ -58,7 +59,7 @@ export default function Loans() {
   const fetchItems = async () => {
     try {
       const { data } = await api.get('/loans');
-      setItems(data);
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       handleAuthError(err);
     }

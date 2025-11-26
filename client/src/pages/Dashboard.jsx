@@ -2,6 +2,7 @@ import Layout from '../components/Layout.jsx';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { API_BASE_URL } from '../config.js';
 
 const formatCurrency = value => {
   const numeric = Number(value);
@@ -11,7 +12,7 @@ const formatCurrency = value => {
 
 export default function Dashboard() {
   const token = localStorage.getItem('token');
-  const api = axios.create({ baseURL: '/api', headers: { Authorization: `Bearer ${token}` } });
+  const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
 
   const [stats, setStats] = useState({
     incomes: { count: 0, total: 0 },
@@ -34,18 +35,22 @@ export default function Dashboard() {
         api.get('/loans')
       ]);
 
+      const incomesData = Array.isArray(incomesRes.data) ? incomesRes.data : [];
+      const expensesData = Array.isArray(expensesRes.data) ? expensesRes.data : [];
+      const loansData = Array.isArray(loansRes.data) ? loansRes.data : [];
+
       setStats({
         incomes: {
-          count: incomesRes.data.length,
-          total: incomesRes.data.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+          count: incomesData.length,
+          total: incomesData.reduce((sum, item) => sum + Number(item.amount || 0), 0)
         },
         expenses: {
-          count: expensesRes.data.length,
-          total: expensesRes.data.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+          count: expensesData.length,
+          total: expensesData.reduce((sum, item) => sum + Number(item.amount || 0), 0)
         },
         loans: {
-          count: loansRes.data.length,
-          total: loansRes.data.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+          count: loansData.length,
+          total: loansData.reduce((sum, item) => sum + Number(item.amount || 0), 0)
         }
       });
     } catch (err) {

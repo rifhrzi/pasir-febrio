@@ -1,6 +1,7 @@
 import Layout from '../components/Layout.jsx';
 import { useEffect, useState, useMemo } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config.js';
 
 const TIME_FILTERS = {
   daily: 'Daily',
@@ -57,7 +58,7 @@ const getDayKey = date => {
 
 export default function Revenue() {
   const token = localStorage.getItem('token');
-  const api = axios.create({ baseURL: '/api', headers: { Authorization: `Bearer ${token}` } });
+  const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
   
   const [timeFilter, setTimeFilter] = useState('daily');
   const [incomes, setIncomes] = useState([]);
@@ -87,9 +88,9 @@ export default function Revenue() {
         api.get('/expenses'),
         api.get('/loans')
       ]);
-      setIncomes(incomesRes.data);
-      setExpenses(expensesRes.data);
-      setLoans(loansRes.data);
+      setIncomes(Array.isArray(incomesRes.data) ? incomesRes.data : []);
+      setExpenses(Array.isArray(expensesRes.data) ? expensesRes.data : []);
+      setLoans(Array.isArray(loansRes.data) ? loansRes.data : []);
     } catch (err) {
       handleAuthError(err);
     } finally {
