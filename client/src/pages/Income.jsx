@@ -77,6 +77,15 @@ const parseIncomeDescription = value => {
   return null;
 };
 
+const formatNumberInput = (value) => {
+  const num = String(value).replace(/\D/g, '');
+  return num.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+const parseFormattedNumber = (value) => {
+  return String(value).replace(/\./g, '');
+};
+
 export default function Income() {
   const token = localStorage.getItem('token');
   const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
@@ -99,6 +108,15 @@ export default function Income() {
   const [items, setItems] = useState([]);
   const [incomeForm, setIncomeForm] = useState(defaultIncomeForm);
   const [confirmItem, setConfirmItem] = useState(null);
+  const [displayPrice, setDisplayPrice] = useState(formatNumberInput(defaultIncomeForm().price));
+  const [displayDeductions, setDisplayDeductions] = useState(() => {
+    const form = defaultIncomeForm();
+    const result = {};
+    Object.keys(form.deductions).forEach(key => {
+      result[key] = formatNumberInput(form.deductions[key]);
+    });
+    return result;
+  });
 
   const currentProduct = incomeProducts[incomeForm.productKey];
   const currentTruck = currentProduct?.trucks[incomeForm.truckKey];
@@ -140,21 +158,28 @@ export default function Income() {
       price: currentTruck.price,
       deductions: { ...currentTruck.deductions }
     }));
+    setDisplayPrice(formatNumberInput(currentTruck.price));
+    const newDisplayDeductions = {};
+    Object.keys(currentTruck.deductions).forEach(key => {
+      newDisplayDeductions[key] = formatNumberInput(currentTruck.deductions[key]);
+    });
+    setDisplayDeductions(newDisplayDeductions);
   }, [incomeForm.productKey, incomeForm.truckKey]);
 
-  const handleExport = async () => {
-    try {
-      const { data } = await api.get('/export/all', { params: { format: 'xlsx' }, responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `income_export_${Date.now()}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      handleAuthError(err);
-    }
+  const handlePriceChange = (e) => {
+    const rawValue = e.target.value;
+    const formatted = formatNumberInput(rawValue);
+    setDisplayPrice(formatted);
+    setIncomeForm(prev => ({ ...prev, price: Number(parseFormattedNumber(formatted)) }));
+  };
+
+  const handleDeductionChange = (key, value) => {
+    const formatted = formatNumberInput(value);
+    setDisplayDeductions(prev => ({ ...prev, [key]: formatted }));
+    setIncomeForm(prev => ({
+      ...prev,
+      deductions: { ...prev.deductions, [key]: Number(parseFormattedNumber(formatted)) }
+    }));
   };
 
   const submitIncome = async () => {
@@ -182,6 +207,13 @@ export default function Income() {
     };
     await api.post('/incomes', payload);
     setIncomeForm(defaultIncomeForm());
+    const defaultForm = defaultIncomeForm();
+    setDisplayPrice(formatNumberInput(defaultForm.price));
+    const newDisplayDeductions = {};
+    Object.keys(defaultForm.deductions).forEach(key => {
+      newDisplayDeductions[key] = formatNumberInput(defaultForm.deductions[key]);
+    });
+    setDisplayDeductions(newDisplayDeductions);
   };
 
   const handleSubmit = async e => {
@@ -236,42 +268,25 @@ export default function Income() {
 
   return (
     <Layout>
-      <div className="space-y-8">
-        <section className="rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 p-8 text-white shadow-2xl">
+      <div className="space-y-6">
+        <section className="rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 p-6 sm:p-8 text-white shadow-2xl">
           <p className="text-xs uppercase tracking-[0.35em] text-white/70">Income Management</p>
-          <h1 className="mt-3 text-4xl font-semibold">Income</h1>
-          <p className="mt-4 max-w-2xl text-sm text-white/80">
-            Hitung otomatis harga rit, potongan loading/market/broker, dan simpan bersihnya untuk retail pasir ayak & lempung.
-          </p>
+          <h1 className="mt-2 text-2xl sm:text-3xl font-bold">Income</h1>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-xl ring-1 ring-black/5 backdrop-blur">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900">Retail pasir ayak & lempung</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Hitung otomatis harga rit, potongan loading/market/broker, dan simpan bersihnya.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <button
-                onClick={handleExport}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-              >
-                <span className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">XLSX</span>
-                Export
-              </button>
-            </div>
+        <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 sm:p-6 shadow-xl backdrop-blur">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4 mb-4">
+            <h2 className="text-xl font-semibold text-slate-900">Input Income</h2>
           </div>
 
-          <div className="grid gap-4 py-6 sm:grid-cols-2">
+          <div className="grid gap-4 py-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
               <p className="text-xs uppercase tracking-widest text-slate-500">Entries</p>
               <p className="mt-2 text-3xl font-semibold text-slate-900">{items.length.toString().padStart(2, '0')}</p>
             </div>
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-inner">
               <p className="text-xs uppercase tracking-widest text-slate-500">Total Amount</p>
-              <p className="mt-2 text-2xl font-semibold text-emerald-600">{formatCurrency(totalAmount)}</p>
+              <p className="mt-2 text-xl sm:text-2xl font-semibold text-emerald-600">{formatCurrency(totalAmount)}</p>
             </div>
           </div>
 
@@ -279,14 +294,14 @@ export default function Income() {
             <div className="grid gap-3 sm:grid-cols-2">
               <input
                 type="date"
-                className="rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                 value={incomeForm.trans_date}
                 onChange={e => setIncomeForm(prev => ({ ...prev, trans_date: e.target.value }))}
                 required
               />
               <div className="grid gap-2 sm:grid-cols-2">
                 <select
-                  className="rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                   value={incomeForm.productKey}
                   onChange={e => setIncomeForm(prev => ({ ...prev, productKey: e.target.value, truckKey: Object.keys(incomeProducts[e.target.value].trucks)[0] }))}
                 >
@@ -295,7 +310,7 @@ export default function Income() {
                   ))}
                 </select>
                 <select
-                  className="rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                   value={incomeForm.truckKey}
                   onChange={e => setIncomeForm(prev => ({ ...prev, truckKey: e.target.value }))}
                 >
@@ -310,20 +325,24 @@ export default function Income() {
               <input
                 type="number"
                 min="1"
-                className="rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                 value={incomeForm.quantity}
                 onChange={e => setIncomeForm(prev => ({ ...prev, quantity: Number(e.target.value) }))}
                 placeholder="Jumlah rit / truk"
                 required
               />
-              <input
-                type="number"
-                className="rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                value={incomeForm.price}
-                onChange={e => setIncomeForm(prev => ({ ...prev, price: Number(e.target.value) }))}
-                placeholder="Harga per rit"
-                required
-              />
+              <div className="nominal-input-wrapper">
+                <span className="currency-prefix">Rp</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pl-12 text-sm text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                  value={displayPrice}
+                  onChange={handlePriceChange}
+                  placeholder="Harga per rit"
+                  required
+                />
+              </div>
             </div>
 
             <div className="grid gap-2 sm:grid-cols-3">
@@ -334,24 +353,23 @@ export default function Income() {
                     <label className="mb-1 block text-xs uppercase tracking-[0.3em] text-slate-400">
                       {POTONGAN_LABELS[key]}
                     </label>
-                    <input
-                      type="number"
-                      className="w-full rounded-2xl border border-transparent bg-white px-3 py-2 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                      value={incomeForm.deductions[key]}
-                      onChange={e =>
-                        setIncomeForm(prev => ({
-                          ...prev,
-                          deductions: { ...prev.deductions, [key]: Number(e.target.value) }
-                        }))
-                      }
-                      placeholder="Nominal potongan / rit"
-                    />
+                    <div className="nominal-input-wrapper">
+                      <span className="currency-prefix text-xs">Rp</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pl-10 text-sm text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                        value={displayDeductions[key] || ''}
+                        onChange={e => handleDeductionChange(key, e.target.value)}
+                        placeholder="Nominal / rit"
+                      />
+                    </div>
                   </div>
                 ))}
             </div>
 
             <textarea
-              className="w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
               rows="2"
               placeholder="Catatan tambahan (opsional)"
               value={incomeForm.notes}
@@ -359,32 +377,32 @@ export default function Income() {
             />
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-slate-100 bg-white p-3 text-sm text-slate-500">
+              <div className="rounded-xl border border-slate-100 bg-white p-3 text-sm text-slate-500">
                 Gross
                 <p className="text-lg font-semibold text-slate-900">{formatCurrency(grossAmount)}</p>
               </div>
-              <div className="rounded-2xl border border-slate-100 bg-white p-3 text-sm text-slate-500">
+              <div className="rounded-xl border border-slate-100 bg-white p-3 text-sm text-slate-500">
                 Potongan total
                 <p className="text-lg font-semibold text-rose-600">{formatCurrency(totalDeductions)}</p>
               </div>
-              <div className="rounded-2xl border border-slate-100 bg-white p-3 text-sm text-slate-500">
+              <div className="rounded-xl border border-slate-100 bg-white p-3 text-sm text-slate-500">
                 Bersih
                 <p className="text-lg font-semibold text-emerald-600">{formatCurrency(netIncome)}</p>
               </div>
             </div>
 
-            <button className="inline-flex w-full items-center justify-center rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:opacity-95">
+            <button className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:opacity-95">
               Simpan Income
             </button>
           </form>
 
-          <div className="mt-6 overflow-hidden rounded-2xl border border-slate-100">
+          <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-sm">
               <thead className="bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-widest text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Category</th>
-                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 hidden md:table-cell">Description</th>
                   <th className="px-4 py-3 text-right">Amount</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -401,7 +419,7 @@ export default function Income() {
                   <tr key={item.id} className="transition hover:bg-slate-50/60">
                     <td className="px-4 py-3 text-slate-700">{formatDate(item.trans_date)}</td>
                     <td className="px-4 py-3 font-semibold text-slate-900">{item.category}</td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="px-4 py-3 text-slate-600 hidden md:table-cell">
                       {renderIncomeDescription(item)}
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-900">
@@ -423,9 +441,9 @@ export default function Income() {
 
           {confirmItem && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-              <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+              <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
                 <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Confirm deletion</p>
-                <h3 className="mt-2 text-2xl font-semibold text-slate-900">Hapus data ini?</h3>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">Hapus data ini?</h3>
                 <p className="mt-2 text-sm text-slate-600">
                   {formatDate(confirmItem.date)} · {confirmItem.category}
                 </p>
@@ -433,13 +451,13 @@ export default function Income() {
                 <div className="mt-6 flex gap-3">
                   <button
                     onClick={confirmDelete}
-                    className="flex-1 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-600/30 transition hover:opacity-95"
+                    className="flex-1 rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-600/30 transition hover:opacity-95"
                   >
                     Ya, hapus
                   </button>
                   <button
                     onClick={() => setConfirmItem(null)}
-                    className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                    className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
                   >
                     Batal
                   </button>
@@ -452,4 +470,3 @@ export default function Income() {
     </Layout>
   );
 }
-

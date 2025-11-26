@@ -26,6 +26,15 @@ const formatDate = value => {
     : date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+const formatNumberInput = (value) => {
+  const num = value.replace(/\D/g, '');
+  return num.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
+const parseFormattedNumber = (value) => {
+  return value.replace(/\./g, '');
+};
+
 export default function Loans() {
   const token = localStorage.getItem('token');
   const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
@@ -52,6 +61,7 @@ export default function Loans() {
     description: '',
     amount: ''
   });
+  const [displayAmount, setDisplayAmount] = useState('');
   const [categoryKey, setCategoryKey] = useState(loansPresets[0]?.label || '__custom');
   const [customCategory, setCustomCategory] = useState('');
   const [confirmItem, setConfirmItem] = useState(null);
@@ -67,19 +77,11 @@ export default function Loans() {
 
   useEffect(() => { fetchItems(); }, []);
 
-  const handleExport = async () => {
-    try {
-      const { data } = await api.get('/export/all', { params: { format: 'xlsx' }, responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `loans_export_${Date.now()}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      handleAuthError(err);
-    }
+  const handleAmountChange = (e) => {
+    const rawValue = e.target.value;
+    const formatted = formatNumberInput(rawValue);
+    setDisplayAmount(formatted);
+    setForm(prev => ({ ...prev, amount: parseFormattedNumber(formatted) }));
   };
 
   const handleSubmit = async e => {
@@ -98,6 +100,7 @@ export default function Loans() {
         description: '',
         amount: ''
       });
+      setDisplayAmount('');
       setCategoryKey(loansPresets[0]?.label || '__custom');
       setCustomCategory('');
       fetchItems();
@@ -126,42 +129,25 @@ export default function Loans() {
 
   return (
     <Layout>
-      <div className="space-y-8">
-        <section className="rounded-3xl bg-gradient-to-r from-amber-600 via-orange-600 to-yellow-600 p-8 text-white shadow-2xl">
+      <div className="space-y-6">
+        <section className="rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-yellow-600 p-6 sm:p-8 text-white shadow-2xl">
           <p className="text-xs uppercase tracking-[0.35em] text-white/70">Loans Management</p>
-          <h1 className="mt-3 text-4xl font-semibold">Loans</h1>
-          <p className="mt-4 max-w-2xl text-sm text-white/80">
-            Catat pinjaman dan hutang dengan rapi menggunakan preset kategori sesuai catatan operasional.
-          </p>
+          <h1 className="mt-2 text-2xl sm:text-3xl font-bold">Loans</h1>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-xl ring-1 ring-black/5 backdrop-blur">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900">Catat loans dengan rapi</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Gunakan preset kategori sesuai catatan operasional.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <button
-                onClick={handleExport}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-              >
-                <span className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">XLSX</span>
-                Export
-              </button>
-            </div>
+        <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 sm:p-6 shadow-xl backdrop-blur">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4 mb-4">
+            <h2 className="text-xl font-semibold text-slate-900">Input Loans</h2>
           </div>
 
-          <div className="grid gap-4 py-6 sm:grid-cols-2">
+          <div className="grid gap-4 py-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
               <p className="text-xs uppercase tracking-widest text-slate-500">Entries</p>
               <p className="mt-2 text-3xl font-semibold text-slate-900">{items.length.toString().padStart(2, '0')}</p>
             </div>
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-inner">
               <p className="text-xs uppercase tracking-widest text-slate-500">Total Amount</p>
-              <p className="mt-2 text-2xl font-semibold text-amber-600">{formatCurrency(totalAmount)}</p>
+              <p className="mt-2 text-xl sm:text-2xl font-semibold text-amber-600">{formatCurrency(totalAmount)}</p>
             </div>
           </div>
 
@@ -169,14 +155,14 @@ export default function Loans() {
             <div className="grid gap-3 sm:grid-cols-2">
               <input
                 type="date"
-                className="rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100"
                 value={form.trans_date}
                 onChange={e => setForm(prev => ({ ...prev, trans_date: e.target.value }))}
                 required
               />
               <div>
                 <select
-                  className="w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100"
                   value={
                     loansPresets.some(opt => opt.label === form.category)
                       ? form.category
@@ -202,7 +188,7 @@ export default function Loans() {
                 {categoryKey === '__custom' && (
                   <input
                     type="text"
-                    className="mt-2 w-full rounded-2xl border border-transparent bg-white px-4 py-2 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100"
                     placeholder="Tulis kategori custom"
                     value={customCategory}
                     onChange={e => {
@@ -219,34 +205,38 @@ export default function Loans() {
             </div>
 
             <textarea
-              className="w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100"
               rows="2"
               placeholder="Deskripsi / detail catatan"
               value={form.description}
               onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
             />
 
-            <input
-              type="number"
-              className="w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-slate-700 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              placeholder="Nominal"
-              value={form.amount}
-              onChange={e => setForm(prev => ({ ...prev, amount: e.target.value }))}
-              required
-            />
+            <div className="nominal-input-wrapper">
+              <span className="currency-prefix">Rp</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pl-12 text-sm text-slate-700 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100"
+                placeholder="0"
+                value={displayAmount}
+                onChange={handleAmountChange}
+                required
+              />
+            </div>
 
-            <button className="inline-flex w-full items-center justify-center rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:opacity-95">
+            <button className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-600/20 transition hover:opacity-95">
               Simpan Loans
             </button>
           </form>
 
-          <div className="mt-6 overflow-hidden rounded-2xl border border-slate-100">
+          <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-sm">
               <thead className="bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-widest text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Category</th>
-                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 hidden sm:table-cell">Description</th>
                   <th className="px-4 py-3 text-right">Amount</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -263,7 +253,7 @@ export default function Loans() {
                   <tr key={item.id} className="transition hover:bg-slate-50/60">
                     <td className="px-4 py-3 text-slate-700">{formatDate(item.trans_date)}</td>
                     <td className="px-4 py-3 font-semibold text-slate-900">{item.category}</td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="px-4 py-3 text-slate-600 hidden sm:table-cell">
                       {item.description || 'N/A'}
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-900">
@@ -285,9 +275,9 @@ export default function Loans() {
 
           {confirmItem && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-              <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+              <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
                 <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Confirm deletion</p>
-                <h3 className="mt-2 text-2xl font-semibold text-slate-900">Hapus data ini?</h3>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">Hapus data ini?</h3>
                 <p className="mt-2 text-sm text-slate-600">
                   {formatDate(confirmItem.date)} · {confirmItem.category}
                 </p>
@@ -295,13 +285,13 @@ export default function Loans() {
                 <div className="mt-6 flex gap-3">
                   <button
                     onClick={confirmDelete}
-                    className="flex-1 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-600/30 transition hover:opacity-95"
+                    className="flex-1 rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-600/30 transition hover:opacity-95"
                   >
                     Ya, hapus
                   </button>
                   <button
                     onClick={() => setConfirmItem(null)}
-                    className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                    className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
                   >
                     Batal
                   </button>
@@ -314,4 +304,3 @@ export default function Loans() {
     </Layout>
   );
 }
-

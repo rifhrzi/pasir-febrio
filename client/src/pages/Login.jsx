@@ -9,6 +9,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showSplash, setShowSplash] = useState(false);
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -17,7 +18,10 @@ export default function Login() {
     try {
       const { data } = await axios.post(`${API_BASE_URL}/auth/login`, { username, password });
       localStorage.setItem('token', data.token);
-      navigate('/');
+      setShowSplash(true);
+      setTimeout(() => {
+        navigate('/');
+      }, 5000);
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
@@ -25,116 +29,205 @@ export default function Login() {
     }
   };
 
-  return (
-    <div className="flex min-h-screen">
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 p-12 flex-col justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 backdrop-blur">
-              <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <span className="text-xl font-bold text-white">Pasir Finance</span>
+  if (showSplash) {
+    return (
+      <div className="splash-screen">
+        <div className="splash-content">
+          <div className="splash-emoji">🔥💯✨</div>
+          <h1 className="splash-text">
+            <span className="letter h">H</span>
+            <span className="letter a">A</span>
+            <span className="letter l">L</span>
+            <span className="letter o">O</span>
+            <span className="letter space">&nbsp;</span>
+            <span className="letter y">Y</span>
+            <span className="letter o2">O</span>
+            <span className="letter l2">L</span>
+          </h1>
+          <div className="splash-emoji bottom">💎🚀🌟</div>
+          <div className="splash-loading">
+            <div className="loading-bar"></div>
           </div>
-          <div className="mt-16 max-w-md">
-            <h2 className="text-4xl font-bold text-white leading-tight">
-              Manage your finance with ease
-            </h2>
-            <p className="mt-4 text-lg text-slate-300">
-              Track income, expenses, and loans for your sand retail business in one place.
-            </p>
-          </div>
+          <p className="splash-subtext">~* SaBaR yAaA bOzZ *~</p>
         </div>
-        <div className="text-sm text-slate-400">
-          © 2024 Pasir Finance. All rights reserved.
+        <div className="splash-particles">
+          {[...Array(20)].map((_, i) => (
+            <div key={i} className="particle" style={{ '--delay': `${i * 0.2}s`, '--x': `${Math.random() * 100}%` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="login-container">
+      {/* Animated Background */}
+      <div className="login-bg">
+        <div className="bg-gradient"></div>
+        <div className="bg-pattern"></div>
+        <div className="floating-shapes">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className={`shape shape-${i + 1}`} />
+          ))}
         </div>
       </div>
 
-      {/* Right Side - Login Form */}
-      <div className="flex w-full lg:w-1/2 items-center justify-center bg-slate-50 p-8">
-        <div className="w-full max-w-md">
-          {/* Mobile Logo */}
-          <div className="mb-8 lg:hidden">
-            <div className="flex items-center justify-center gap-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900">
-                <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      <div className="login-wrapper">
+        {/* Left Side - Branding */}
+        <div className="login-branding">
+          <div className="branding-content">
+            <div className="brand-logo">
+              <div className="logo-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
                 </svg>
               </div>
-              <span className="text-xl font-bold text-slate-900">Pasir Finance</span>
+              <div className="logo-text">
+                <span className="logo-company">PT. DZIKRY MULTI LABA</span>
+                <span className="logo-tagline">Sand Mining Excellence</span>
+              </div>
+            </div>
+            
+            <div className="brand-hero">
+              <h2>Kelola Bisnis Pasir Anda dengan Mudah</h2>
+              <p>
+                Sistem manajemen keuangan terpadu untuk operasional pertambangan pasir. 
+                Pantau pemasukan, pengeluaran, hutang, dan keuntungan dalam satu platform.
+              </p>
+            </div>
+
+            <div className="brand-features">
+              <div className="feature">
+                <div className="feature-icon">📊</div>
+                <div className="feature-text">
+                  <span className="feature-title">Analisis Real-time</span>
+                  <span className="feature-desc">Pantau revenue harian, mingguan, bulanan</span>
+                </div>
+              </div>
+              <div className="feature">
+                <div className="feature-icon">🚛</div>
+                <div className="feature-text">
+                  <span className="feature-title">Manajemen Rit</span>
+                  <span className="feature-desc">Hitung otomatis pasir ayak & lempung</span>
+                </div>
+              </div>
+              <div className="feature">
+                <div className="feature-icon">💰</div>
+                <div className="feature-text">
+                  <span className="feature-title">Potongan Otomatis</span>
+                  <span className="feature-desc">Loading, market, broker tercatat rapi</span>
+                </div>
+              </div>
             </div>
           </div>
+          
+          <div className="brand-footer">
+            © 2024 PT. DZIKRY MULTI LABA. All rights reserved.
+          </div>
+        </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-slate-900">Welcome back</h1>
-              <p className="mt-2 text-sm text-slate-600">Sign in to your account to continue</p>
+        {/* Right Side - Login Form */}
+        <div className="login-form-section">
+          <div className="form-container">
+            {/* Mobile Logo */}
+            <div className="mobile-logo">
+              <div className="logo-icon-mobile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </div>
+              <span className="mobile-company">PT. DZIKRY MULTI LABA</span>
             </div>
 
-            {error && (
-              <div className="mb-6 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-2">
-                  Username
-                </label>
-                <input
-                  id="username"
-                  type="text"
-                  placeholder="Enter your username"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  required
-                  autoComplete="username"
-                />
+            <div className="form-card">
+              <div className="form-header">
+                <h1>Selamat Datang</h1>
+                <p>Masuk ke akun Anda untuk melanjutkan</p>
               </div>
 
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                />
-              </div>
+              {error && (
+                <div className="error-alert">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <span>{error}</span>
+                </div>
+              )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              <form onSubmit={handleSubmit} className="login-form">
+                <div className="input-group">
+                  <label htmlFor="username">Username</label>
+                  <div className="input-wrapper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
                     </svg>
-                    Signing in...
-                  </span>
-                ) : (
-                  'Sign in'
-                )}
-              </button>
-            </form>
-          </div>
+                    <input
+                      id="username"
+                      type="text"
+                      placeholder="Masukkan username"
+                      value={username}
+                      onChange={e => setUsername(e.target.value)}
+                      required
+                      autoComplete="username"
+                    />
+                  </div>
+                </div>
 
-          <p className="mt-6 text-center text-xs text-slate-500">
-            Protected by industry-standard security measures
-          </p>
+                <div className="input-group">
+                  <label htmlFor="password">Password</label>
+                  <div className="input-wrapper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    <input
+                      id="password"
+                      type="password"
+                      placeholder="Masukkan password"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                    />
+                  </div>
+                </div>
+
+                <button type="submit" disabled={loading} className="submit-btn">
+                  {loading ? (
+                    <span className="btn-loading">
+                      <svg className="spinner" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" opacity="0.25" />
+                        <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Memproses...
+                    </span>
+                  ) : (
+                    <>
+                      Masuk
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
+                      </svg>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+
+            <p className="security-note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+              Dilindungi dengan standar keamanan industri
+            </p>
+          </div>
         </div>
       </div>
     </div>
