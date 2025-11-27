@@ -1,6 +1,6 @@
 import Layout from '../components/Layout.jsx';
 import DataFilter from '../components/DataFilter.jsx';
-import ExportButton, { exportIncomesToExcel } from '../components/ExcelExport.jsx';
+import ExportButton, { exportFromServer } from '../components/ExcelExport.jsx';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config.js';
@@ -252,14 +252,10 @@ export default function Income() {
     setConfirmItem(null);
   };
 
-  const handleExportExcel = () => {
-    if (items.length === 0) {
-      alert('Tidak ada data untuk di-export');
-      return;
-    }
+  const handleExportExcel = async () => {
     setIsExporting(true);
     try {
-      const filename = exportIncomesToExcel(items, 'PT_Dzikry_Income');
+      const filename = await exportFromServer('incomes', 'xlsx');
       console.log('Exported to:', filename);
     } catch (err) {
       console.error('Export error:', err);

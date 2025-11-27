@@ -1,9 +1,46 @@
 import * as XLSX from 'xlsx';
+import { API_BASE_URL } from '../config.js';
 
 /**
  * Export data to Excel with PT Dzikry Multi Laba template format
- * Sheets: TRONTON, COLTDIESEL, EXPANDING
+ * Uses server-side template for proper formatting
  */
+
+// Server-side export using template
+export const exportFromServer = async (type = 'all', format = 'xlsx') => {
+  const token = localStorage.getItem('token');
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/export/${type}?format=${format}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Export failed');
+    }
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+    a.download = `PT_Dzikry_${type}_${dateStr}.${format}`;
+    
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    return a.download;
+  } catch (error) {
+    console.error('Server export error:', error);
+    throw error;
+  }
+};
 
 const formatCurrencyNumber = (value) => {
   const num = Number(value);

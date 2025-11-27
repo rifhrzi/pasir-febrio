@@ -1,5 +1,5 @@
 import Layout from '../components/Layout.jsx';
-import ExportButton, { exportCompleteReport } from '../components/ExcelExport.jsx';
+import ExportButton, { exportFromServer } from '../components/ExcelExport.jsx';
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
@@ -190,14 +190,10 @@ export default function Dashboard() {
 
   const netRevenue = stats.incomes.total - stats.expenses.total - stats.loans.total;
 
-  const handleExportComplete = () => {
-    if (incomes.length === 0 && expenses.length === 0) {
-      alert('Tidak ada data untuk di-export');
-      return;
-    }
+  const handleExportComplete = async () => {
     setIsExporting(true);
     try {
-      const filename = exportCompleteReport(incomes, expenses, 'PT_Dzikry_Laporan');
+      const filename = await exportFromServer('all', 'xlsx');
       console.log('Exported complete report to:', filename);
     } catch (err) {
       console.error('Export error:', err);

@@ -1,5 +1,6 @@
 import Layout from '../components/Layout.jsx';
 import DataFilter from '../components/DataFilter.jsx';
+import ExportButton, { exportFromServer } from '../components/ExcelExport.jsx';
 import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config.js';
@@ -70,6 +71,7 @@ export default function Loans() {
   const [customCategory, setCustomCategory] = useState('');
   const [confirmItem, setConfirmItem] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleFilteredItems = useCallback((filtered) => {
     setFilteredItems(filtered);
@@ -133,6 +135,19 @@ export default function Loans() {
     setConfirmItem(null);
   };
 
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      const filename = await exportFromServer('loans', 'xlsx');
+      console.log('Exported to:', filename);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Gagal export data: ' + err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const activePresetHint = loansPresets.find(opt => opt.label === form.category)?.hint;
 
@@ -140,8 +155,19 @@ export default function Loans() {
     <Layout>
       <div className="space-y-6">
         <section className="rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-yellow-600 p-6 sm:p-8 text-white shadow-2xl">
-          <p className="text-xs uppercase tracking-[0.35em] text-white/70">Loans Management</p>
-          <h1 className="mt-2 text-2xl sm:text-3xl font-bold">Loans</h1>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-white/70">Loans Management</p>
+              <h1 className="mt-2 text-2xl sm:text-3xl font-bold">Loans</h1>
+            </div>
+            <ExportButton 
+              onClick={handleExportExcel} 
+              loading={isExporting}
+              colorScheme="amber"
+            >
+              Export Excel
+            </ExportButton>
+          </div>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 sm:p-6 shadow-xl backdrop-blur">
