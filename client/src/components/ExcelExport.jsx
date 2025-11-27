@@ -3,7 +3,10 @@ import { API_BASE_URL } from '../config.js';
 
 /**
  * Export data to Excel with PT Dzikry Multi Laba template format
- * Uses server-side template for proper formatting
+ * Matches the template structure:
+ * - BIAYA OPERASIONAL DAN PRODUKSI
+ * - Summary (Pengeluaran, Pendapatan, Sisa Kas)
+ * - Catatan Hutang
  */
 
 // Server-side export using template
@@ -42,272 +45,167 @@ export const exportFromServer = async (type = 'all', format = 'xlsx') => {
   }
 };
 
-const formatCurrencyNumber = (value) => {
-  const num = Number(value);
-  return isNaN(num) ? 0 : num;
+const formatNumber = (value) => {
+  const num = Number(value || 0);
+  return num.toLocaleString('id-ID');
 };
 
-const formatDateForExcel = (dateStr) => {
-  if (!dateStr) return '';
+const formatRupiah = (value) => {
+  return `Rp ${formatNumber(value)}`;
+};
+
+const formatDateIndonesian = (dateStr) => {
+  if (!dateStr) return '-';
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return dateStr;
   
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
-};
-
-const getDayName = (dateStr) => {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return '';
+  const months = ['JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 
+                  'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
   
-  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-  return days[date.getDay()];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
 };
 
-// Parse income description JSON
-const parseIncomeDescription = (description) => {
-  if (!description) return null;
-  try {
-    const parsed = JSON.parse(description);
-    if (parsed && parsed.__type === 'income-v1') return parsed;
-  } catch {
-    return null;
-  }
-  return null;
-};
-
-// Create header row with styling info
-const createIncomeHeader = () => [
-  'NO',
-  'DATE',
-  'DAY',
-  'PRODUCT NAME',
-  'QTY',
-  'PRICE',
-  'TOTAL',
-  'LOADING',
-  'MARKET',
-  'DO',
-  'TOTAL BAYAR'
-];
-
-const createExpenseHeader = () => [
-  'NO',
-  'DATE',
-  'DAY',
-  'CATEGORY',
-  'DESCRIPTION',
-  'AMOUNT'
-];
-
-// Transform income data to Excel row
-const incomeToRow = (item, index, parseDescription = true) => {
-  const parsed = parseDescription ? parseIncomeDescription(item.description) : null;
-  
-  if (parsed) {
-    const qty = parsed.quantity || 1;
-    const unitPrice = parsed.unitPrice || 0;
-    const gross = parsed.gross || (qty * unitPrice);
-    const loading = (parsed.perLoadDeductions?.loading || 0) * qty;
-    const market = (parsed.perLoadDeductions?.market || 0) * qty;
-    const doFee = (parsed.perLoadDeductions?.broker || 0) * qty;
-    const net = parsed.net || item.amount;
-    
-    return [
-      index + 1,
-      formatDateForExcel(item.trans_date),
-      getDayName(item.trans_date),
-      parsed.productLabel || item.category,
-      qty,
-      unitPrice,
-      gross,
-      loading,
-      market,
-      doFee,
-      net
-    ];
-  }
-  
-  // Fallback for items without parsed description
-  return [
-    index + 1,
-    formatDateForExcel(item.trans_date),
-    getDayName(item.trans_date),
-    item.category || '',
-    1,
-    formatCurrencyNumber(item.amount),
-    formatCurrencyNumber(item.amount),
-    0,
-    0,
-    0,
-    formatCurrencyNumber(item.amount)
-  ];
-};
-
-// Transform expense data to Excel row
-const expenseToRow = (item, index) => {
-  return [
-    index + 1,
-    formatDateForExcel(item.trans_date),
-    getDayName(item.trans_date),
-    item.category || '',
-    item.description || '',
-    formatCurrencyNumber(item.amount)
-  ];
-};
-
-// Calculate totals row for income
-const createIncomeTotalsRow = (data) => {
-  let totalQty = 0, totalGross = 0, totalLoading = 0, totalMarket = 0, totalDO = 0, totalNet = 0;
-  
-  data.forEach(item => {
-    const parsed = parseIncomeDescription(item.description);
-    if (parsed) {
-      const qty = parsed.quantity || 1;
-      totalQty += qty;
-      totalGross += parsed.gross || 0;
-      totalLoading += (parsed.perLoadDeductions?.loading || 0) * qty;
-      totalMarket += (parsed.perLoadDeductions?.market || 0) * qty;
-      totalDO += (parsed.perLoadDeductions?.broker || 0) * qty;
-      totalNet += parsed.net || item.amount;
-    } else {
-      totalQty += 1;
-      totalGross += formatCurrencyNumber(item.amount);
-      totalNet += formatCurrencyNumber(item.amount);
-    }
-  });
-  
-  return ['', 'TOTAL', '', '', totalQty, '', totalGross, totalLoading, totalMarket, totalDO, totalNet];
-};
-
-// Calculate totals row for expense
-const createExpenseTotalsRow = (data) => {
-  const total = data.reduce((sum, item) => sum + formatCurrencyNumber(item.amount), 0);
-  return ['', 'TOTAL', '', '', '', total];
-};
-
-// Style column widths
-const setColumnWidths = (ws, type = 'income') => {
-  if (type === 'income') {
-    ws['!cols'] = [
-      { wch: 5 },   // NO
-      { wch: 12 },  // DATE
-      { wch: 10 },  // DAY
-      { wch: 20 },  // PRODUCT NAME
-      { wch: 6 },   // QTY
-      { wch: 15 },  // PRICE
-      { wch: 15 },  // TOTAL
-      { wch: 12 },  // LOADING
-      { wch: 12 },  // MARKET
-      { wch: 12 },  // DO
-      { wch: 15 }   // TOTAL BAYAR
-    ];
-  } else {
-    ws['!cols'] = [
-      { wch: 5 },   // NO
-      { wch: 12 },  // DATE
-      { wch: 10 },  // DAY
-      { wch: 15 },  // CATEGORY
-      { wch: 30 },  // DESCRIPTION
-      { wch: 15 }   // AMOUNT
-    ];
-  }
+const sumAmount = (items) => {
+  return items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
 };
 
 /**
- * Export incomes to Excel with TRONTON and COLTDIESEL sheets
+ * Export complete report matching the template structure
  */
-export const exportIncomesToExcel = (incomes, filename = 'Income_Export') => {
+export const exportCompleteReport = (incomes = [], expenses = [], loans = [], filename = 'Laporan_Keuangan') => {
   const wb = XLSX.utils.book_new();
   
-  // Separate data by truck type
-  const trontonData = [];
-  const coltDieselData = [];
-  const otherData = [];
+  // Calculate totals
+  const totalIncome = sumAmount(incomes);
+  const totalExpense = sumAmount(expenses);
+  const totalLoans = sumAmount(loans);
+  const sisaPendapatan = totalIncome - totalExpense;
+  const sisaKas = sisaPendapatan - totalLoans;
   
-  incomes.forEach(item => {
-    const parsed = parseIncomeDescription(item.description);
-    const category = (item.category || '').toLowerCase();
-    const truckKey = parsed?.truckKey || '';
+  // Get date range
+  const allDates = [...incomes, ...expenses, ...loans]
+    .map(r => r.trans_date)
+    .filter(d => d)
+    .sort();
+  const startDate = allDates.length > 0 ? formatDateIndonesian(allDates[0]) : '-';
+  const endDate = allDates.length > 0 ? formatDateIndonesian(allDates[allDates.length - 1]) : '-';
+
+  // Build the sheet data matching template structure
+  const data = [];
+  
+  // Row 1: Title
+  data.push(['BIAYA OPERASIONAL DAN PRODUKSI CIMANGGU', '', '', '', '', '', '', '']);
+  
+  // Row 2: Date range
+  data.push([`${startDate} - ${endDate}`, '', '', '', '', '', '', '']);
+  
+  // Row 3: Total Pendapatan
+  data.push([`PENDAPATAN ${formatRupiah(totalIncome)}`, '', '', '', '', '', '', '']);
+  
+  // Row 4: Headers
+  data.push(['NO', 'KOMPONEN BIAYA OPERASIONAL DAN PRODUKSI', 'SATUAN', '', '', 'VOL', 'SATUAN (RP)', 'JUMLAH (RP)']);
+  
+  // Row 5: Sub-headers
+  data.push(['', '', 'DT', 'TRON', 'PICK UP', '', '', '']);
+  
+  // Expense rows with summary on right
+  const expenseRows = Math.max(expenses.length, 3); // At least 3 rows
+  for (let i = 0; i < expenseRows; i++) {
+    const exp = expenses[i];
+    const row = [
+      exp ? i + 1 : '',
+      exp ? `${exp.category || ''}${exp.description ? ' - ' + exp.description : ''}` : '',
+      '', '', '', '', '',
+      exp ? formatNumber(exp.amount || 0) : ''
+    ];
     
-    if (truckKey === 'tronton' || category.includes('tronton')) {
-      trontonData.push(item);
-    } else if (truckKey === 'colt' || category.includes('colt')) {
-      coltDieselData.push(item);
-    } else {
-      otherData.push(item);
+    // Add summary on right side for first 3 rows
+    if (i === 0) {
+      row.push(''); row.push('Pengeluaran'); row.push(formatNumber(totalExpense));
+    } else if (i === 1) {
+      row.push(''); row.push('Pendapatan'); row.push(formatNumber(totalIncome));
+    } else if (i === 2) {
+      row.push(''); row.push('Pendapatan'); row.push(formatNumber(sisaPendapatan));
     }
-  });
-  
-  // Create TRONTON sheet
-  if (trontonData.length > 0 || coltDieselData.length === 0) {
-    const trontonRows = [
-      ['PT DZIKRY MULTI LABA'],
-      ['INCOME - TRONTON'],
-      [],
-      createIncomeHeader(),
-      ...trontonData.map((item, idx) => incomeToRow(item, idx)),
-      [],
-      createIncomeTotalsRow(trontonData)
-    ];
-    const wsTronton = XLSX.utils.aoa_to_sheet(trontonRows);
-    setColumnWidths(wsTronton, 'income');
     
-    // Merge title cells
-    wsTronton['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }
-    ];
-    
-    XLSX.utils.book_append_sheet(wb, wsTronton, 'TRONTON');
+    data.push(row);
   }
   
-  // Create COLTDIESEL sheet
-  if (coltDieselData.length > 0) {
-    const coltRows = [
-      ['PT DZIKRY MULTI LABA'],
-      ['INCOME - COLT DIESEL'],
-      [],
-      createIncomeHeader(),
-      ...coltDieselData.map((item, idx) => incomeToRow(item, idx)),
-      [],
-      createIncomeTotalsRow(coltDieselData)
-    ];
-    const wsColt = XLSX.utils.aoa_to_sheet(coltRows);
-    setColumnWidths(wsColt, 'income');
-    
-    wsColt['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }
-    ];
-    
-    XLSX.utils.book_append_sheet(wb, wsColt, 'COLTDIESEL');
+  // Catatan Hutang 1 header
+  data.push(['', 'Catatan Hutang 1 (Yang belum dibayar):', '', '', '', '', '', '']);
+  
+  // Loan items
+  if (loans.length === 0) {
+    data.push(['', '1. Tidak ada hutang', 'Rp 0', '', '', '', '', '']);
+  } else {
+    loans.forEach((loan, idx) => {
+      data.push([
+        '',
+        `${idx + 1}. ${loan.category || 'Hutang'}${loan.description ? ' - ' + loan.description : ''}`,
+        formatRupiah(loan.amount || 0),
+        '', '', '', '', ''
+      ]);
+    });
   }
   
-  // Create OTHER sheet if there's unclassified data
-  if (otherData.length > 0) {
-    const otherRows = [
-      ['PT DZIKRY MULTI LABA'],
-      ['INCOME - OTHER'],
-      [],
-      createIncomeHeader(),
-      ...otherData.map((item, idx) => incomeToRow(item, idx)),
-      [],
-      createIncomeTotalsRow(otherData)
-    ];
-    const wsOther = XLSX.utils.aoa_to_sheet(otherRows);
-    setColumnWidths(wsOther, 'income');
-    
-    wsOther['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }
-    ];
-    
-    XLSX.utils.book_append_sheet(wb, wsOther, 'LAINNYA');
-  }
+  // Total Hutang
+  data.push(['', 'Total Hutang', '', '', '', '', '', '']);
+  
+  // Empty row
+  data.push(['', '', '', '', '', '', '', '']);
+  
+  // Catatan section on right
+  data.push(['', '', '', '', '', '', 'Catatan', 'Catatan Pembahasan 2', '', '']);
+  data.push(['', '', '', '', '', '', 'Catatan', 'Catatan Beban HO 3', '', '']);
+  
+  // Catatan Pembahasan 2
+  data.push(['', 'Catatan Pembahasan 2:', '', '', '', '', 'Jumlah', 'Jumlah', '', '']);
+  data.push(['', '1. Dana Deposit Royalti dari HM...?', '', '', '', '', 'Sisa Kas', 'Sisa Kas', formatNumber(sisaKas), '']);
+  data.push(['', '2. Dana dari Pak Rizal ke HM...?', '', '', '', '', '', '', '', '']);
+  data.push(['', '3. Dana Pembayaran Tanah ...?', '', '', '', '', 'Catatan', 'Catatan Hutang 1', '', '']);
+  
+  // Pengeluaran section
+  data.push(['', 'Pengeluaran', formatNumber(totalExpense), '', '', '', '', '', '', '']);
+  data.push(['', '5. Gaji Security CBB', '', '', '', '', '', '', '', '']);
+  data.push(['', '6. Dana transfer ke HM ...?', '', '', '', '', '', '', '', '']);
+  data.push(['', '7. Discouunto ke Pak Alif....?', '', '', '', '', '', '', '', '']);
+  data.push(['', 'Total', '', '', '', '', '', '', '', '']);
+  
+  // Empty row
+  data.push(['', '', '', '', '', '', '', '', '', '']);
+  
+  // Catatan Beban HO 3
+  data.push(['', 'Catatan Beban HO 3:', '', '', '', '', '', '', '', '']);
+  data.push(['', '1. 3 galon meditran', 'Rp', formatNumber(1140000), '', '', '', '', '', '']);
+  data.push(['', '2. 1 galon meditran', 'Rp', formatNumber(528000), '', '', '', '', '', '']);
+  data.push(['', 'Total', '', formatNumber(1668000), '', '', '', '', '', '']);
+
+  // Create worksheet
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  
+  // Set column widths
+  ws['!cols'] = [
+    { wch: 5 },   // A - NO
+    { wch: 45 },  // B - KOMPONEN
+    { wch: 12 },  // C - SATUAN DT
+    { wch: 12 },  // D - TRON
+    { wch: 12 },  // E - PICK UP
+    { wch: 8 },   // F - VOL
+    { wch: 12 },  // G - SATUAN (RP)
+    { wch: 15 },  // H - JUMLAH (RP)
+    { wch: 12 },  // I
+    { wch: 15 },  // J
+    { wch: 15 },  // K
+  ];
+  
+  // Merge cells for title rows
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Row 1 title
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }, // Row 2 date
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } }, // Row 3 pendapatan
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Table 1');
   
   // Generate filename with date
   const today = new Date();
@@ -319,181 +217,24 @@ export const exportIncomesToExcel = (incomes, filename = 'Income_Export') => {
 };
 
 /**
- * Export expenses to Excel with EXPANDING sheet
+ * Export incomes only
  */
-export const exportExpensesToExcel = (expenses, filename = 'Expense_Export') => {
-  const wb = XLSX.utils.book_new();
-  
-  const expenseRows = [
-    ['PT DZIKRY MULTI LABA'],
-    ['PENGELUARAN / EXPANDING'],
-    [],
-    createExpenseHeader(),
-    ...expenses.map((item, idx) => expenseToRow(item, idx)),
-    [],
-    createExpenseTotalsRow(expenses)
-  ];
-  
-  const wsExpense = XLSX.utils.aoa_to_sheet(expenseRows);
-  setColumnWidths(wsExpense, 'expense');
-  
-  wsExpense['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }
-  ];
-  
-  XLSX.utils.book_append_sheet(wb, wsExpense, 'EXPANDING');
-  
-  const today = new Date();
-  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-  const fullFilename = `${filename}_${dateStr}.xlsx`;
-  
-  XLSX.writeFile(wb, fullFilename);
-  return fullFilename;
+export const exportIncomesToExcel = (incomes, filename = 'Income_Export') => {
+  return exportCompleteReport(incomes, [], [], filename);
 };
 
 /**
- * Export complete report (Income + Expense) to Excel
+ * Export expenses only  
  */
-export const exportCompleteReport = (incomes, expenses, filename = 'Complete_Report') => {
-  const wb = XLSX.utils.book_new();
-  
-  // Separate income data by truck type
-  const trontonData = [];
-  const coltDieselData = [];
-  const otherIncomeData = [];
-  
-  incomes.forEach(item => {
-    const parsed = parseIncomeDescription(item.description);
-    const category = (item.category || '').toLowerCase();
-    const truckKey = parsed?.truckKey || '';
-    
-    if (truckKey === 'tronton' || category.includes('tronton')) {
-      trontonData.push(item);
-    } else if (truckKey === 'colt' || category.includes('colt')) {
-      coltDieselData.push(item);
-    } else {
-      otherIncomeData.push(item);
-    }
-  });
-  
-  // Calculate totals
-  const totalIncome = incomes.reduce((sum, item) => sum + formatCurrencyNumber(item.amount), 0);
-  const totalExpense = expenses.reduce((sum, item) => sum + formatCurrencyNumber(item.amount), 0);
-  const netProfit = totalIncome - totalExpense;
-  
-  // Create SUMMARY sheet
-  const summaryRows = [
-    ['PT DZIKRY MULTI LABA'],
-    ['LAPORAN KEUANGAN'],
-    [],
-    ['RINGKASAN'],
-    [],
-    ['Keterangan', 'Jumlah'],
-    ['Total Pemasukan', totalIncome],
-    ['  - Tronton', trontonData.reduce((s, i) => s + formatCurrencyNumber(i.amount), 0)],
-    ['  - Colt Diesel', coltDieselData.reduce((s, i) => s + formatCurrencyNumber(i.amount), 0)],
-    ['  - Lainnya', otherIncomeData.reduce((s, i) => s + formatCurrencyNumber(i.amount), 0)],
-    [],
-    ['Total Pengeluaran', totalExpense],
-    [],
-    ['LABA BERSIH', netProfit]
-  ];
-  
-  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
-  wsSummary['!cols'] = [{ wch: 25 }, { wch: 20 }];
-  wsSummary['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }
-  ];
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'SUMMARY');
-  
-  // Create TRONTON sheet
-  if (trontonData.length > 0) {
-    const trontonRows = [
-      ['PT DZIKRY MULTI LABA'],
-      ['INCOME - TRONTON'],
-      [],
-      createIncomeHeader(),
-      ...trontonData.map((item, idx) => incomeToRow(item, idx)),
-      [],
-      createIncomeTotalsRow(trontonData)
-    ];
-    const wsTronton = XLSX.utils.aoa_to_sheet(trontonRows);
-    setColumnWidths(wsTronton, 'income');
-    wsTronton['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }
-    ];
-    XLSX.utils.book_append_sheet(wb, wsTronton, 'TRONTON');
-  }
-  
-  // Create COLTDIESEL sheet
-  if (coltDieselData.length > 0) {
-    const coltRows = [
-      ['PT DZIKRY MULTI LABA'],
-      ['INCOME - COLT DIESEL'],
-      [],
-      createIncomeHeader(),
-      ...coltDieselData.map((item, idx) => incomeToRow(item, idx)),
-      [],
-      createIncomeTotalsRow(coltDieselData)
-    ];
-    const wsColt = XLSX.utils.aoa_to_sheet(coltRows);
-    setColumnWidths(wsColt, 'income');
-    wsColt['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }
-    ];
-    XLSX.utils.book_append_sheet(wb, wsColt, 'COLTDIESEL');
-  }
-  
-  // Create LAINNYA sheet for other income
-  if (otherIncomeData.length > 0) {
-    const otherRows = [
-      ['PT DZIKRY MULTI LABA'],
-      ['INCOME - LAINNYA'],
-      [],
-      createIncomeHeader(),
-      ...otherIncomeData.map((item, idx) => incomeToRow(item, idx)),
-      [],
-      createIncomeTotalsRow(otherIncomeData)
-    ];
-    const wsOther = XLSX.utils.aoa_to_sheet(otherRows);
-    setColumnWidths(wsOther, 'income');
-    wsOther['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }
-    ];
-    XLSX.utils.book_append_sheet(wb, wsOther, 'LAINNYA');
-  }
-  
-  // Create EXPANDING (Expense) sheet
-  if (expenses.length > 0) {
-    const expenseRows = [
-      ['PT DZIKRY MULTI LABA'],
-      ['PENGELUARAN / EXPANDING'],
-      [],
-      createExpenseHeader(),
-      ...expenses.map((item, idx) => expenseToRow(item, idx)),
-      [],
-      createExpenseTotalsRow(expenses)
-    ];
-    const wsExpense = XLSX.utils.aoa_to_sheet(expenseRows);
-    setColumnWidths(wsExpense, 'expense');
-    wsExpense['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }
-    ];
-    XLSX.utils.book_append_sheet(wb, wsExpense, 'EXPANDING');
-  }
-  
-  const today = new Date();
-  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-  const fullFilename = `${filename}_${dateStr}.xlsx`;
-  
-  XLSX.writeFile(wb, fullFilename);
-  return fullFilename;
+export const exportExpensesToExcel = (expenses, filename = 'Expense_Export') => {
+  return exportCompleteReport([], expenses, [], filename);
+};
+
+/**
+ * Export loans only
+ */
+export const exportLoansToExcel = (loans, filename = 'Loans_Export') => {
+  return exportCompleteReport([], [], loans, filename);
 };
 
 /**
@@ -532,4 +273,3 @@ export default function ExportButton({
     </button>
   );
 }
-
