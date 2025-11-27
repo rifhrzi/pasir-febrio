@@ -4,6 +4,62 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config.js';
 
+// Simple Pie Chart Component
+function PieChart({ data, size = 200 }) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  if (total === 0) {
+    return (
+      <div className="flex items-center justify-center" style={{ width: size, height: size }}>
+        <div className="text-slate-400 text-sm">No data</div>
+      </div>
+    );
+  }
+
+  let currentAngle = 0;
+  const radius = size / 2;
+  const centerX = radius;
+  const centerY = radius;
+
+  const paths = data.map((item, index) => {
+    const percentage = item.value / total;
+    const angle = percentage * 360;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + angle;
+    currentAngle = endAngle;
+
+    const startRad = (startAngle - 90) * (Math.PI / 180);
+    const endRad = (endAngle - 90) * (Math.PI / 180);
+
+    const x1 = centerX + radius * Math.cos(startRad);
+    const y1 = centerY + radius * Math.sin(startRad);
+    const x2 = centerX + radius * Math.cos(endRad);
+    const y2 = centerY + radius * Math.sin(endRad);
+
+    const largeArc = angle > 180 ? 1 : 0;
+
+    const pathD = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+    return (
+      <path
+        key={index}
+        d={pathD}
+        fill={item.color}
+        stroke="white"
+        strokeWidth="2"
+        className="transition-all duration-300 hover:opacity-80"
+      />
+    );
+  });
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {paths}
+      {/* Inner circle for donut effect */}
+      <circle cx={centerX} cy={centerY} r={radius * 0.5} fill="white" />
+    </svg>
+  );
+}
+
 const TIME_FILTERS = {
   all: 'Semua',
   daily: 'Hari Ini',
@@ -262,42 +318,101 @@ export default function Dashboard() {
           </Link>
         </div>
 
-        {/* Deductions Summary */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Summary Potongan ({TIME_FILTERS[timeFilter]})</h2>
-          <div className="grid gap-4 grid-cols-3">
-            <div className="rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50 to-white p-3 sm:p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100">
-                  <svg className="h-4 w-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <p className="text-xs uppercase tracking-widest text-purple-600">Loading</p>
+        {/* Revenue Pie Chart & Deductions Summary */}
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+          {/* Pie Chart Section */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Distribusi Keuangan</h2>
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <div className="flex-shrink-0">
+                <PieChart 
+                  data={[
+                    { value: stats.incomes.total, color: '#10b981', label: 'Income' },
+                    { value: stats.expenses.total, color: '#f43f5e', label: 'Expenses' },
+                    { value: stats.loans.total, color: '#f59e0b', label: 'Loans' }
+                  ]}
+                  size={180}
+                />
               </div>
-              <p className="text-lg sm:text-xl font-semibold text-purple-700">{formatCurrency(stats.deductions.loading)}</p>
+              <div className="flex-1 w-full space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                    <span className="text-sm font-medium text-slate-700">Income</span>
+                  </div>
+                  <span className="text-sm font-bold text-emerald-600">{formatCurrency(stats.incomes.total)}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-rose-50 border border-rose-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-rose-500"></div>
+                    <span className="text-sm font-medium text-slate-700">Expenses</span>
+                  </div>
+                  <span className="text-sm font-bold text-rose-600">{formatCurrency(stats.expenses.total)}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-amber-50 border border-amber-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                    <span className="text-sm font-medium text-slate-700">Loans</span>
+                  </div>
+                  <span className="text-sm font-bold text-amber-600">{formatCurrency(stats.loans.total)}</span>
+                </div>
+                <div className={`flex items-center justify-between p-3 rounded-lg ${netRevenue >= 0 ? 'bg-blue-50 border border-blue-100' : 'bg-red-50 border border-red-100'}`}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${netRevenue >= 0 ? 'bg-blue-500' : 'bg-red-500'}`}></div>
+                    <span className="text-sm font-medium text-slate-700">Net Revenue</span>
+                  </div>
+                  <span className={`text-sm font-bold ${netRevenue >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatCurrency(netRevenue)}</span>
+                </div>
+              </div>
             </div>
-            <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-3 sm:p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100">
-                  <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
+          </div>
+
+          {/* Deductions Summary */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Summary Potongan ({TIME_FILTERS[timeFilter]})</h2>
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+              <div className="rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50 to-white p-3 sm:p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100">
+                    <svg className="h-4 w-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className="text-xs uppercase tracking-widest text-purple-600">Loading</p>
                 </div>
-                <p className="text-xs uppercase tracking-widest text-indigo-600">Market</p>
+                <p className="text-lg sm:text-xl font-semibold text-purple-700">{formatCurrency(stats.deductions.loading)}</p>
               </div>
-              <p className="text-lg sm:text-xl font-semibold text-indigo-700">{formatCurrency(stats.deductions.market)}</p>
+              <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-3 sm:p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100">
+                    <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-xs uppercase tracking-widest text-indigo-600">Market</p>
+                </div>
+                <p className="text-lg sm:text-xl font-semibold text-indigo-700">{formatCurrency(stats.deductions.market)}</p>
+              </div>
+              <div className="rounded-xl border border-cyan-100 bg-gradient-to-br from-cyan-50 to-white p-3 sm:p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100">
+                    <svg className="h-4 w-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-xs uppercase tracking-widest text-cyan-600">Broker</p>
+                </div>
+                <p className="text-lg sm:text-xl font-semibold text-cyan-700">{formatCurrency(stats.deductions.broker)}</p>
+              </div>
             </div>
-            <div className="rounded-xl border border-cyan-100 bg-gradient-to-br from-cyan-50 to-white p-3 sm:p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100">
-                  <svg className="h-4 w-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <p className="text-xs uppercase tracking-widest text-cyan-600">Broker</p>
+            {/* Total Deductions */}
+            <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-slate-100 to-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-600">Total Potongan</span>
+                <span className="text-lg font-bold text-slate-900">
+                  {formatCurrency(stats.deductions.loading + stats.deductions.market + stats.deductions.broker)}
+                </span>
               </div>
-              <p className="text-lg sm:text-xl font-semibold text-cyan-700">{formatCurrency(stats.deductions.broker)}</p>
             </div>
           </div>
         </div>

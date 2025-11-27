@@ -13,8 +13,17 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// CORS Configuration - Allow all origins for flexibility
+// For production, you can set FRONTEND_URL env variable to restrict
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || true, // true = allow all origins
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/incomes', incomesRouter);

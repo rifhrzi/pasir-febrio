@@ -1,11 +1,10 @@
 // API Configuration
 // Production: Uses Railway backend
-// Development: Uses local backend
+// Development/Docker: Uses relative path (nginx proxy)
 
-export const API_BASE_URL = import.meta.env.PROD 
-  ? 'https://pasir-finance-production.up.railway.app/api'
-  : '/api';
+const RAILWAY_BACKEND_URL = 'https://pasir-finance-production.up.railway.app/api'; // Replace with your Railway URL
 
-// Railway Backend: https://pasir-finance-production.up.railway.app
-// Supabase Database: db.uoddaqiwpdudgmovatbr.supabase.co
+export const API_BASE_URL = import.meta.env.PROD
+    ? RAILWAY_BACKEND_URL
+    : '/api';
 

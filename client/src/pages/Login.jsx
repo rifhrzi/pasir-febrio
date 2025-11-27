@@ -18,6 +18,8 @@ export default function Login() {
     try {
       const { data } = await axios.post(`${API_BASE_URL}/auth/login`, { username, password });
       localStorage.setItem('token', data.token);
+      localStorage.setItem('userRole', data.role || 'admin');
+      localStorage.setItem('username', username);
       setShowSplash(true);
       setTimeout(() => {
         navigate('/');
@@ -29,26 +31,66 @@ export default function Login() {
     }
   };
 
+  // Get splash screen content based on username
+  const getSplashContent = () => {
+    if (username === 'dzikri123') {
+      return {
+        letters: [
+          { char: 'H', className: 'h' },
+          { char: 'A', className: 'a' },
+          { char: 'L', className: 'l' },
+          { char: 'O', className: 'o' },
+          { char: ' ', className: 'space' },
+          { char: 'B', className: 'b' },
+          { char: 'O', className: 'o2' },
+          { char: 'S', className: 's' },
+          { char: ' ', className: 'space2' },
+          { char: 'D', className: 'd' },
+          { char: 'Z', className: 'z' },
+          { char: 'I', className: 'i' },
+          { char: 'K', className: 'k' },
+          { char: 'R', className: 'r' },
+          { char: 'I', className: 'i2' },
+        ],
+        subtext: '~* SeManGaT bOzZ dZiKrI *~',
+        emojis: { top: '👑💎✨', bottom: '🚀💰🔥' }
+      };
+    }
+    // Default for admin and others
+    return {
+      letters: [
+        { char: 'H', className: 'h' },
+        { char: 'A', className: 'a' },
+        { char: 'L', className: 'l' },
+        { char: 'O', className: 'o' },
+        { char: ' ', className: 'space' },
+        { char: 'Y', className: 'y' },
+        { char: 'O', className: 'o2' },
+        { char: 'L', className: 'l2' },
+      ],
+      subtext: '~* SaBaR yAaA bOzZ *~',
+      emojis: { top: '🔥💯✨', bottom: '💎🚀🌟' }
+    };
+  };
+
   if (showSplash) {
+    const splashContent = getSplashContent();
     return (
       <div className="splash-screen">
         <div className="splash-content">
-          <div className="splash-emoji">🔥💯✨</div>
+          <div className="splash-emoji">{splashContent.emojis.top}</div>
           <h1 className="splash-text">
-            <span className="letter h">H</span>
-            <span className="letter a">A</span>
-            <span className="letter l">L</span>
-            <span className="letter o">O</span>
-            <span className="letter space">&nbsp;</span>
-            <span className="letter y">Y</span>
-            <span className="letter o2">O</span>
-            <span className="letter l2">L</span>
+            {splashContent.letters.map((letter, idx) => (
+              <span key={idx} className={`letter ${letter.className}`}>
+                {letter.char === ' ' ? '\u00A0' : letter.char}
+              </span>
+            ))}
           </h1>
-          <div className="splash-emoji bottom">💎🚀🌟</div>
+          <div className="splash-emoji bottom">{splashContent.emojis.bottom}</div>
           <div className="splash-loading">
             <div className="loading-bar"></div>
           </div>
-          <p className="splash-subtext">~* SaBaR yAaA bOzZ *~</p>
+          <p className="splash-subtext">{splashContent.subtext}</p>
         </div>
         <div className="splash-particles">
           {[...Array(20)].map((_, i) => (

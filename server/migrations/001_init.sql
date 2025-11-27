@@ -3,8 +3,20 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'admin',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add role column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'users' AND column_name = 'role'
+  ) THEN
+    ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin';
+  END IF;
+END $$;
 
 -- Incomes
 CREATE TABLE IF NOT EXISTS incomes (
