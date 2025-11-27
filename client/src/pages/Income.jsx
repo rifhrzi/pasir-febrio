@@ -1,5 +1,6 @@
 import Layout from '../components/Layout.jsx';
 import DataFilter from '../components/DataFilter.jsx';
+import ExportButton, { exportIncomesToExcel } from '../components/ExcelExport.jsx';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config.js';
@@ -113,6 +114,7 @@ export default function Income() {
   const [incomeForm, setIncomeForm] = useState(defaultIncomeForm);
   const [confirmItem, setConfirmItem] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
   
   const handleFilteredItems = useCallback((filtered) => {
     setFilteredItems(filtered);
@@ -250,6 +252,23 @@ export default function Income() {
     setConfirmItem(null);
   };
 
+  const handleExportExcel = () => {
+    if (items.length === 0) {
+      alert('Tidak ada data untuk di-export');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const filename = exportIncomesToExcel(items, 'PT_Dzikry_Income');
+      console.log('Exported to:', filename);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Gagal export data: ' + err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
   const renderIncomeDescription = row => {
@@ -279,8 +298,19 @@ export default function Income() {
     <Layout>
       <div className="space-y-6">
         <section className="rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 p-6 sm:p-8 text-white shadow-2xl">
-          <p className="text-xs uppercase tracking-[0.35em] text-white/70">Income Management</p>
-          <h1 className="mt-2 text-2xl sm:text-3xl font-bold">Income</h1>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-white/70">Income Management</p>
+              <h1 className="mt-2 text-2xl sm:text-3xl font-bold">Income</h1>
+            </div>
+            <ExportButton 
+              onClick={handleExportExcel} 
+              loading={isExporting}
+              colorScheme="emerald"
+            >
+              Export Excel
+            </ExportButton>
+          </div>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 sm:p-6 shadow-xl backdrop-blur">

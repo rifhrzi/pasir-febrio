@@ -1,4 +1,5 @@
 import Layout from '../components/Layout.jsx';
+import ExportButton, { exportCompleteReport } from '../components/ExcelExport.jsx';
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
@@ -120,6 +121,7 @@ export default function Dashboard() {
   const [loans, setLoans] = useState([]);
   const [timeFilter, setTimeFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -188,6 +190,23 @@ export default function Dashboard() {
 
   const netRevenue = stats.incomes.total - stats.expenses.total - stats.loans.total;
 
+  const handleExportComplete = () => {
+    if (incomes.length === 0 && expenses.length === 0) {
+      alert('Tidak ada data untuk di-export');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const filename = exportCompleteReport(incomes, expenses, 'PT_Dzikry_Laporan');
+      console.log('Exported complete report to:', filename);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Gagal export data: ' + err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -203,10 +222,21 @@ export default function Dashboard() {
       <div className="space-y-6">
         {/* Header */}
         <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 p-6 sm:p-8 text-white">
-          <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
-          <p className="mt-2 text-sm text-slate-300">
-            Overview data keuangan PT. DZIKRY MULTI LABA
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
+              <p className="mt-2 text-sm text-slate-300">
+                Overview data keuangan PT. DZIKRY MULTI LABA
+              </p>
+            </div>
+            <ExportButton 
+              onClick={handleExportComplete} 
+              loading={isExporting}
+              colorScheme="blue"
+            >
+              Export Laporan
+            </ExportButton>
+          </div>
         </div>
 
         {/* Time Filter */}
