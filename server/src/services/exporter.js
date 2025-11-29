@@ -58,14 +58,36 @@ async function buildXlsx(sections, templatePath) {
   const startDate = allDates.length > 0 ? formatDateIndonesian(allDates[0]) : '-';
   const endDate = allDates.length > 0 ? formatDateIndonesian(allDates[allDates.length - 1]) : '-';
 
+  // Group expenses by category for summary
+  const expenseByCategory = {};
+  expenses.forEach(exp => {
+    const cat = (exp.category || 'LAINNYA').toUpperCase();
+    if (!expenseByCategory[cat]) {
+      expenseByCategory[cat] = { items: [], total: 0 };
+    }
+    expenseByCategory[cat].items.push(exp);
+    expenseByCategory[cat].total += Number(exp.amount || 0);
+  });
+
+  // Group incomes by category
+  const incomeByCategory = {};
+  incomes.forEach(inc => {
+    const cat = (inc.category || 'LAINNYA').toUpperCase();
+    if (!incomeByCategory[cat]) {
+      incomeByCategory[cat] = { items: [], total: 0 };
+    }
+    incomeByCategory[cat].items.push(inc);
+    incomeByCategory[cat].total += Number(inc.amount || 0);
+  });
+
   if (templatePath) {
     try {
       await workbook.xlsx.readFile(templatePath);
       const sheet = workbook.getWorksheet('Table 1') || workbook.worksheets[0];
       
       if (sheet) {
-        // Update template with actual data
-        updateTemplateValues(sheet, {
+        // Update template with actual data based on exact template structure
+        populateTemplate(sheet, {
           totalIncome,
           totalExpense,
           totalLoans,
@@ -74,272 +96,253 @@ async function buildXlsx(sections, templatePath) {
           startDate,
           endDate,
           expenses,
-          loans
+          loans,
+          expenseByCategory,
+          incomeByCategory
         });
       }
     } catch (err) {
       console.warn('Failed to read template, creating new workbook', err);
-      createFreshWorkbook(workbook, { incomes, expenses, loans, totalIncome, totalExpense, totalLoans, sisaKas });
+      createFreshWorkbook(workbook, { incomes, expenses, loans, totalIncome, totalExpense, totalLoans, sisaKas, expenseByCategory });
     }
   } else {
-    createFreshWorkbook(workbook, { incomes, expenses, loans, totalIncome, totalExpense, totalLoans, sisaKas });
+    createFreshWorkbook(workbook, { incomes, expenses, loans, totalIncome, totalExpense, totalLoans, sisaKas, expenseByCategory });
   }
 
   return workbook.xlsx.writeBuffer();
 }
 
-function updateTemplateValues(sheet, data) {
-  const { totalIncome, totalExpense, totalLoans, sisaPendapatan, sisaKas, startDate, endDate, expenses, loans } = data;
+/**
+ * Populate the template based on exact structure from server/templates/export_template.xlsx
+ * Template Structure:
+ * Row 1: BIAYA OPERASIONAL DAN PRODUKSI (merged)
+ * Row 2: Date range (merged)
+ * Row 3: PENDAPATAN Rp xxx (merged)
+ * Row 4-5: Headers (NO, KOMPONEN BIAYA, SATUAN DT/TRON/PICKUP, VOL, SATUAN RP, JUMLAH RP)
+ * Row 6-15: Expense data rows (10 rows)
+ * Row 18: Pengeluaran (G) - Value (H)
+ * Row 19: Pendapatan (G) - Value (H)
+ * Row 20: Sisa Pendapatan (G) - Value (H)
+ * Row 21: Catatan Hutang header (B)
+ * Row 22-24: Hutang items (B-C)
+ * Row 25: Total Hutang (B-C)
+ * Row 27: Catatan Pembahasan 2 header
+ * Row 28: Sisa Kas label/value (E-F)
+ */
+function populateTemplate(sheet, data) {
+  const { totalIncome, totalExpense, totalLoans, sisaPendapatan, sisaKas, startDate, endDate, expenses, loans, expenseByCategory } = data;
 
-  // Update Row 2 - Date range (if cell exists)
-  try {
-    const row2 = sheet.getRow(2);
-    for (let col = 1; col <= 10; col++) {
-      const cell = row2.getCell(col);
-      const text = getCellText(cell.value);
-      if (text && (text.includes('JULI') || text.includes('AGUSTUS') || text.includes('-'))) {
-        cell.value = `${startDate} - ${endDate}`;
-        break;
-      }
+  // Row 2: Update date range
+  const row2 = sheet.getRow(2);
+  row2.getCell(1).value = `${startDate} - ${endDate}`;
+
+  // Row 3: Update PENDAPATAN total
+  const row3 = sheet.getRow(3);
+  row3.getCell(1).value = `PENDAPATAN ${formatRupiahText(totalIncome)}`;
+
+  // Rows 6-15: Fill expense data (grouped by category)
+  const categoryNames = Object.keys(expenseByCategory).sort((a, b) => expenseByCategory[b].total - expenseByCategory[a].total);
+  let expenseRowIdx = 0;
+  
+  for (let i = 6; i <= 15; i++) {
+    const row = sheet.getRow(i);
+    if (expenseRowIdx < categoryNames.length) {
+      const catName = categoryNames[expenseRowIdx];
+      const catData = expenseByCategory[catName];
+      row.getCell(1).value = expenseRowIdx + 1; // NO
+      row.getCell(2).value = catName; // KOMPONEN BIAYA
+      row.getCell(8).value = formatNumber(catData.total); // JUMLAH (RP) - column H
+      expenseRowIdx++;
+    } else {
+      // Clear remaining rows
+      row.getCell(1).value = '';
+      row.getCell(2).value = '';
+      row.getCell(8).value = '';
     }
-  } catch (e) { console.log('Row 2 update skipped'); }
+  }
 
-  // Update Row 3 - PENDAPATAN total
-  try {
-    const row3 = sheet.getRow(3);
-    for (let col = 1; col <= 10; col++) {
-      const cell = row3.getCell(col);
-      const text = getCellText(cell.value);
-      if (text && text.toUpperCase().includes('PENDAPATAN')) {
-        cell.value = `PENDAPATAN ${formatRupiahText(totalIncome)}`;
-        break;
-      }
-    }
-  } catch (e) { console.log('Row 3 update skipped'); }
+  // Row 18: Pengeluaran value (column H)
+  sheet.getRow(18).getCell(8).value = formatNumber(totalExpense);
 
-  // Update summary values on the right side (columns G-H)
-  updateCellByLabel(sheet, 'Pengeluaran', totalExpense, 6, 8);
-  updateCellByLabel(sheet, 'Pendapatan', totalIncome, 7, 8);
-  updateCellByLabel(sheet, 'Pendapatan', sisaPendapatan, 8, 8); // Second pendapatan = sisa
-  
-  // Update Sisa Kas value
-  updateCellByLabel(sheet, 'Sisa Kas', sisaKas, null, 8);
-  
-  // Update Jumlah
-  updateCellByLabel(sheet, 'Jumlah', totalExpense, null, 8);
+  // Row 19: Pendapatan value (column H)
+  sheet.getRow(19).getCell(8).value = formatNumber(totalIncome);
 
-  // Update Catatan Hutang section
-  updateLoanSection(sheet, loans, totalLoans);
-  
-  // Update expense items in the table (rows 6-8 area)
-  updateExpenseTable(sheet, expenses);
-  
-  // Update Pengeluaran total in column C (row 17 area)
-  updatePengeluaranTotal(sheet, totalExpense);
+  // Row 20: Sisa Pendapatan value (column H)
+  sheet.getRow(20).getCell(8).value = formatNumber(sisaPendapatan);
+
+  // Row 21-24: Catatan Hutang items
+  const loanItems = loans.length > 0 ? loans.slice(0, 3) : [{ category: 'Tidak ada hutang', amount: 0 }];
+  loanItems.forEach((loan, idx) => {
+    const row = sheet.getRow(22 + idx);
+    row.getCell(2).value = `${idx + 1}. ${loan.category || 'Hutang'}${loan.description ? ' - ' + loan.description.substring(0, 30) : ''}`;
+    row.getCell(3).value = formatRupiahText(loan.amount || 0);
+  });
+
+  // Clear remaining loan rows if less than 3
+  for (let i = loanItems.length; i < 3; i++) {
+    const row = sheet.getRow(22 + i);
+    row.getCell(2).value = '';
+    row.getCell(3).value = '';
+  }
+
+  // Row 25: Total Hutang
+  sheet.getRow(25).getCell(3).value = formatRupiahText(totalLoans);
+
+  // Row 28: Sisa Kas value (column F)
+  sheet.getRow(28).getCell(6).value = formatNumber(sisaKas);
+
+  // Also update Sisa Kas in any other location if exists
+  updateCellIfLabel(sheet, 'Sisa Kas', sisaKas);
 }
 
-function updateCellByLabel(sheet, label, value, specificRow = null, valueCol = null) {
+function updateCellIfLabel(sheet, label, value) {
   sheet.eachRow((row, rowNumber) => {
-    if (specificRow && rowNumber !== specificRow) return;
-    
     row.eachCell((cell, colNumber) => {
       const text = getCellText(cell.value);
-      if (text && text.toLowerCase().includes(label.toLowerCase())) {
-        // Find the value cell (usually in next column or specific column)
-        const targetCol = valueCol || colNumber + 1;
-        const valueCell = sheet.getCell(rowNumber, targetCol);
-        
-        if (typeof value === 'number') {
-          // Check if it should be formatted as currency text or number
-          const currentValueText = getCellText(valueCell.value);
-          if (currentValueText && currentValueText.includes('Rp')) {
-            valueCell.value = formatRupiahText(value);
-          } else {
-            valueCell.value = formatNumber(value);
-          }
-        } else {
-          valueCell.value = value;
+      if (text && text.toLowerCase().includes(label.toLowerCase()) && !text.includes('Rp')) {
+        // Update next column with value
+        const valueCell = row.getCell(colNumber + 1);
+        if (!valueCell.value || getCellText(valueCell.value) === '') {
+          valueCell.value = formatNumber(value);
         }
       }
     });
   });
 }
 
-function updateLoanSection(sheet, loans, totalLoans) {
-  // Find "Catatan Hutang" row
-  let loanStartRow = null;
-  let totalHutangRow = null;
-  
-  sheet.eachRow((row, rowNumber) => {
-    row.eachCell((cell) => {
-      const text = getCellText(cell.value);
-      if (text && text.toLowerCase().includes('catatan hutang') && text.toLowerCase().includes('belum dibayar')) {
-        loanStartRow = rowNumber;
-      }
-      if (text && text.toLowerCase() === 'total hutang') {
-        totalHutangRow = rowNumber;
-      }
-    });
-  });
-
-  if (loanStartRow) {
-    // Update loan items starting from row after header
-    const loanData = loans.length > 0 ? loans : [{ category: 'Tidak ada hutang', amount: 0 }];
-    
-    loanData.forEach((loan, idx) => {
-      const row = sheet.getRow(loanStartRow + 1 + idx);
-      row.getCell(2).value = `${idx + 1}. ${loan.category || 'Hutang'}${loan.description ? ' - ' + loan.description : ''}`;
-      row.getCell(3).value = `Rp ${formatNumber(loan.amount || 0)}`;
-    });
-  }
-  
-  // Update Total Hutang
-  if (totalHutangRow) {
-    // Total Hutang is typically in the same row
-  }
-}
-
-function updateExpenseTable(sheet, expenses) {
-  // Find the row with "NO" header (typically row 4)
-  let headerRow = null;
-  
-  sheet.eachRow((row, rowNumber) => {
-    const cellA = row.getCell(1);
-    const text = getCellText(cellA.value);
-    if (text && text.toUpperCase() === 'NO') {
-      headerRow = rowNumber;
-    }
-  });
-
-  if (!headerRow) return;
-  
-  // Data starts 2 rows after header (after sub-header)
-  const dataStartRow = headerRow + 2;
-  
-  // Update expense rows (up to 3 rows in the template)
-  expenses.slice(0, 3).forEach((expense, idx) => {
-    const row = sheet.getRow(dataStartRow + idx);
-    row.getCell(1).value = idx + 1; // NO
-    row.getCell(2).value = `${expense.category || ''}${expense.description ? ' - ' + expense.description : ''}`; // KOMPONEN
-    row.getCell(8).value = formatNumber(expense.amount || 0); // JUMLAH (RP) - column H
-  });
-}
-
-function updatePengeluaranTotal(sheet, totalExpense) {
-  sheet.eachRow((row, rowNumber) => {
-    const cellB = row.getCell(2);
-    const text = getCellText(cellB.value);
-    if (text && text.toLowerCase() === 'pengeluaran') {
-      // Update column C with total
-      row.getCell(3).value = formatNumber(totalExpense);
-    }
-  });
-}
-
 function createFreshWorkbook(workbook, data) {
-  const { incomes, expenses, loans, totalIncome, totalExpense, totalLoans, sisaKas } = data;
+  const { incomes, expenses, loans, totalIncome, totalExpense, totalLoans, sisaKas, expenseByCategory } = data;
   
   const sheet = workbook.addWorksheet('Laporan Keuangan');
   
   // Set column widths
   sheet.columns = [
     { width: 5 },  // A - NO
-    { width: 40 }, // B - Description
-    { width: 15 }, // C - Amount
-    { width: 15 }, // D
-    { width: 15 }, // E
-    { width: 15 }, // F
-    { width: 15 }, // G - Label
-    { width: 18 }, // H - Value
+    { width: 45 }, // B - Description
+    { width: 15 }, // C - DT
+    { width: 12 }, // D - TRON
+    { width: 12 }, // E - PICK UP
+    { width: 8 },  // F - VOL
+    { width: 15 }, // G - SATUAN (RP)
+    { width: 18 }, // H - JUMLAH (RP)
   ];
 
-  // Header
-  sheet.mergeCells('A1:H1');
-  sheet.getCell('A1').value = 'BIAYA OPERASIONAL DAN PRODUKSI';
-  sheet.getCell('A1').font = { bold: true, size: 14 };
-  sheet.getCell('A1').alignment = { horizontal: 'center' };
-
-  // Date range
+  // Get date range
   const allDates = [...incomes, ...expenses, ...loans].map(r => r.trans_date).filter(d => d).sort();
   const startDate = allDates.length > 0 ? formatDateIndonesian(allDates[0]) : '-';
   const endDate = allDates.length > 0 ? formatDateIndonesian(allDates[allDates.length - 1]) : '-';
-  
+
+  // Row 1: Title
+  sheet.mergeCells('A1:H1');
+  sheet.getCell('A1').value = 'BIAYA OPERASIONAL DAN PRODUKSI CIMANGGU';
+  sheet.getCell('A1').font = { bold: true, size: 14 };
+  sheet.getCell('A1').alignment = { horizontal: 'center' };
+  sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+  sheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+
+  // Row 2: Date range
   sheet.mergeCells('A2:H2');
   sheet.getCell('A2').value = `${startDate} - ${endDate}`;
   sheet.getCell('A2').alignment = { horizontal: 'center' };
+  sheet.getCell('A2').font = { bold: true };
 
-  // Total Income
+  // Row 3: Total Income
   sheet.mergeCells('A3:H3');
   sheet.getCell('A3').value = `PENDAPATAN ${formatRupiahText(totalIncome)}`;
-  sheet.getCell('A3').font = { bold: true };
+  sheet.getCell('A3').font = { bold: true, size: 12 };
   sheet.getCell('A3').alignment = { horizontal: 'center' };
+  sheet.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
 
-  // Empty row
-  let currentRow = 5;
-
-  // Expense Header
-  sheet.getCell(`A${currentRow}`).value = 'NO';
-  sheet.getCell(`B${currentRow}`).value = 'KOMPONEN BIAYA OPERASIONAL DAN PRODUKSI';
-  sheet.getCell(`C${currentRow}`).value = 'JUMLAH (RP)';
-  sheet.getCell(`G${currentRow}`).value = 'KETERANGAN';
-  sheet.getCell(`H${currentRow}`).value = 'NILAI';
+  // Row 4-5: Headers
+  const headers = ['NO', 'KOMPONEN BIAYA OPERASIONAL DAN PRODUKSI', 'SATUAN', '', '', 'VOL', 'SATUAN (RP)', 'JUMLAH (RP)'];
+  const subHeaders = ['', '', 'DT', 'TRON', 'PICK UP', '', '', ''];
   
-  const headerRowObj = sheet.getRow(currentRow);
-  headerRowObj.font = { bold: true };
-  headerRowObj.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
-  currentRow++;
+  headers.forEach((h, idx) => {
+    sheet.getCell(4, idx + 1).value = h;
+    sheet.getCell(4, idx + 1).font = { bold: true };
+    sheet.getCell(4, idx + 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
+  });
+  
+  subHeaders.forEach((h, idx) => {
+    if (h) {
+      sheet.getCell(5, idx + 1).value = h;
+      sheet.getCell(5, idx + 1).font = { bold: true };
+      sheet.getCell(5, idx + 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
+    }
+  });
 
-  // Expenses
-  expenses.forEach((expense, idx) => {
-    sheet.getCell(`A${currentRow}`).value = idx + 1;
-    sheet.getCell(`B${currentRow}`).value = `${expense.category || ''}${expense.description ? ' - ' + expense.description : ''}`;
-    sheet.getCell(`C${currentRow}`).value = formatNumber(expense.amount || 0);
+  // Rows 6+: Expense categories
+  let currentRow = 6;
+  const categoryNames = Object.keys(expenseByCategory || {}).sort((a, b) => (expenseByCategory[b]?.total || 0) - (expenseByCategory[a]?.total || 0));
+  
+  categoryNames.forEach((catName, idx) => {
+    const catData = expenseByCategory[catName];
+    sheet.getCell(currentRow, 1).value = idx + 1;
+    sheet.getCell(currentRow, 2).value = catName;
+    sheet.getCell(currentRow, 8).value = formatNumber(catData.total);
     currentRow++;
   });
 
-  // Summary on right side
-  const summaryStartRow = 6;
-  sheet.getCell(`G${summaryStartRow}`).value = 'Pengeluaran';
-  sheet.getCell(`H${summaryStartRow}`).value = formatNumber(totalExpense);
-  sheet.getCell(`G${summaryStartRow + 1}`).value = 'Pendapatan';
-  sheet.getCell(`H${summaryStartRow + 1}`).value = formatNumber(totalIncome);
-  sheet.getCell(`G${summaryStartRow + 2}`).value = 'Sisa Pendapatan';
-  sheet.getCell(`H${summaryStartRow + 2}`).value = formatNumber(totalIncome - totalExpense);
+  // Add empty rows if less than 10
+  while (currentRow < 16) {
+    sheet.getCell(currentRow, 1).value = currentRow - 5;
+    currentRow++;
+  }
 
-  currentRow = Math.max(currentRow, summaryStartRow + 4);
+  // Skip to row 18 for summary
+  currentRow = 18;
 
-  // Loan Section
-  sheet.getCell(`B${currentRow}`).value = 'Catatan Hutang 1 (Yang belum dibayar):';
-  sheet.getCell(`B${currentRow}`).font = { bold: true };
-  sheet.getCell(`B${currentRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+  // Summary section (columns G-H)
+  sheet.getCell(currentRow, 7).value = 'Pengeluaran';
+  sheet.getCell(currentRow, 8).value = formatNumber(totalExpense);
+  sheet.getRow(currentRow).getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC000' } };
+  currentRow++;
+
+  sheet.getCell(currentRow, 7).value = 'Pendapatan';
+  sheet.getCell(currentRow, 8).value = formatNumber(totalIncome);
+  sheet.getRow(currentRow).getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
+  currentRow++;
+
+  sheet.getCell(currentRow, 7).value = 'Sisa Pendapatan';
+  sheet.getCell(currentRow, 8).value = formatNumber(totalIncome - totalExpense);
+  sheet.getRow(currentRow).getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00B0F0' } };
+  currentRow++;
+
+  // Catatan Hutang section
+  sheet.getCell(currentRow, 2).value = 'Catatan Hutang 1 (Yang belum dibayar):';
+  sheet.getCell(currentRow, 2).font = { bold: true };
+  sheet.getCell(currentRow, 2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
   currentRow++;
 
   if (loans.length === 0) {
-    sheet.getCell(`B${currentRow}`).value = '1. Tidak ada hutang';
-    sheet.getCell(`C${currentRow}`).value = 'Rp 0';
+    sheet.getCell(currentRow, 2).value = '1. Tidak ada hutang';
+    sheet.getCell(currentRow, 3).value = 'Rp 0';
     currentRow++;
   } else {
     loans.forEach((loan, idx) => {
-      sheet.getCell(`B${currentRow}`).value = `${idx + 1}. ${loan.category || 'Hutang'}${loan.description ? ' - ' + loan.description : ''}`;
-      sheet.getCell(`C${currentRow}`).value = formatRupiahText(loan.amount || 0);
+      sheet.getCell(currentRow, 2).value = `${idx + 1}. ${loan.category || 'Hutang'}${loan.description ? ' - ' + loan.description.substring(0, 40) : ''}`;
+      sheet.getCell(currentRow, 3).value = formatRupiahText(loan.amount || 0);
       currentRow++;
     });
   }
 
-  sheet.getCell(`B${currentRow}`).value = 'Total Hutang';
-  sheet.getCell(`B${currentRow}`).font = { bold: true };
-  sheet.getCell(`B${currentRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
-  sheet.getCell(`C${currentRow}`).value = formatRupiahText(totalLoans);
+  sheet.getCell(currentRow, 2).value = 'Total Hutang';
+  sheet.getCell(currentRow, 2).font = { bold: true };
+  sheet.getCell(currentRow, 2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+  sheet.getCell(currentRow, 3).value = formatRupiahText(totalLoans);
   currentRow += 2;
 
   // Sisa Kas
-  sheet.getCell(`G${currentRow}`).value = 'Sisa Kas';
-  sheet.getCell(`H${currentRow}`).value = formatNumber(sisaKas);
-  sheet.getCell(`G${currentRow}`).font = { bold: true };
-  sheet.getCell(`H${currentRow}`).font = { bold: true };
+  sheet.getCell(currentRow, 7).value = 'Sisa Kas';
+  sheet.getCell(currentRow, 8).value = formatNumber(sisaKas);
+  sheet.getRow(currentRow).getCell(7).font = { bold: true };
+  sheet.getRow(currentRow).getCell(8).font = { bold: true };
+  if (sisaKas < 0) {
+    sheet.getRow(currentRow).getCell(8).font = { bold: true, color: { argb: 'FFFF0000' } };
+  }
 
-  // Apply borders to data area
-  for (let r = 5; r <= currentRow; r++) {
+  // Apply borders
+  for (let r = 4; r <= currentRow; r++) {
     for (let c = 1; c <= 8; c++) {
       const cell = sheet.getCell(r, c);
       cell.border = {
@@ -367,7 +370,7 @@ function buildPdf(data) {
       doc.fontSize(16).text(section.name, { underline: true });
       doc.moveDown(0.5);
       section.rows.forEach(r => {
-        doc.fontSize(10).text(`${r.trans_date} | ${r.category} | ${r.description || ''} | ${r.amount}`);
+        doc.fontSize(10).text(`${r.trans_date} | ${r.category} | ${r.description || ''} | Rp ${Number(r.amount || 0).toLocaleString('id-ID')}`);
       });
       doc.addPage();
     });
