@@ -75,6 +75,115 @@ export default function Login() {
 
   if (showSplash) {
     const splashContent = getSplashContent();
+    
+    // Special 3D Excavator splash for dzikri123
+    if (username === 'dzikri123') {
+      return (
+        <div className="excavator-splash">
+          {/* 3D Scene Container */}
+          <div className="scene-3d">
+            {/* Sky Background */}
+            <div className="sky">
+              <div className="sun"></div>
+              <div className="cloud cloud-1"></div>
+              <div className="cloud cloud-2"></div>
+              <div className="cloud cloud-3"></div>
+            </div>
+            
+            {/* Ground / Sand Area */}
+            <div className="ground">
+              <div className="sand-texture"></div>
+              <div className="sand-pile"></div>
+              <div className="sand-pile pile-2"></div>
+              <div className="sand-pile pile-3"></div>
+            </div>
+
+            {/* 3D Excavator */}
+            <div className="excavator">
+              {/* Tracks */}
+              <div className="excavator-tracks">
+                <div className="track track-left">
+                  <div className="track-wheel"></div>
+                  <div className="track-wheel wheel-back"></div>
+                  <div className="track-belt"></div>
+                </div>
+                <div className="track track-right">
+                  <div className="track-wheel"></div>
+                  <div className="track-wheel wheel-back"></div>
+                  <div className="track-belt"></div>
+                </div>
+              </div>
+              
+              {/* Body */}
+              <div className="excavator-body">
+                <div className="body-main">
+                  <div className="body-front"></div>
+                  <div className="body-top"></div>
+                  <div className="body-side"></div>
+                </div>
+                <div className="cabin">
+                  <div className="cabin-window"></div>
+                  <div className="cabin-roof"></div>
+                </div>
+                <div className="exhaust">
+                  <div className="smoke smoke-1"></div>
+                  <div className="smoke smoke-2"></div>
+                  <div className="smoke smoke-3"></div>
+                </div>
+              </div>
+              
+              {/* Arm */}
+              <div className="excavator-arm">
+                <div className="arm-boom">
+                  <div className="hydraulic"></div>
+                </div>
+                <div className="arm-stick">
+                  <div className="hydraulic stick-hydraulic"></div>
+                </div>
+                <div className="bucket">
+                  <div className="bucket-teeth"></div>
+                  <div className="sand-in-bucket"></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Falling Sand Particles */}
+            <div className="falling-sand">
+              {[...Array(30)].map((_, i) => (
+                <div 
+                  key={i} 
+                  className="sand-particle" 
+                  style={{ 
+                    '--delay': `${i * 0.15}s`, 
+                    '--x': `${50 + (Math.random() - 0.5) * 30}%`,
+                    '--size': `${3 + Math.random() * 5}px`
+                  }} 
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Text Overlay */}
+          <div className="excavator-splash-text">
+            <h1 className="excavator-title">
+              <span className="title-line">HALO BOS</span>
+              <span className="title-name">DZIKRI</span>
+            </h1>
+            <p className="excavator-subtitle">PT. DZIKRY MULTI LABA</p>
+          </div>
+
+          {/* Loading Bar */}
+          <div className="excavator-loading">
+            <div className="loading-track">
+              <div className="loading-progress"></div>
+            </div>
+            <span className="loading-text">Memuat sistem...</span>
+          </div>
+        </div>
+      );
+    }
+    
+    // Default splash for other users
     return (
       <div className="splash-screen">
         <div className="splash-content">
