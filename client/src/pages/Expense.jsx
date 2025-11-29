@@ -63,7 +63,8 @@ export default function Expense() {
     trans_date: '',
     category: expensePresets[0]?.label || '',
     description: '',
-    amount: ''
+    amount: '',
+    proof_image: ''
   });
   const [displayAmount, setDisplayAmount] = useState('');
   const [categoryKey, setCategoryKey] = useState(expensePresets[0]?.label || '__custom');
@@ -71,6 +72,8 @@ export default function Expense() {
   const [confirmItem, setConfirmItem] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [proofPreview, setProofPreview] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const handleFilteredItems = useCallback((filtered) => {
     setFilteredItems(filtered);
@@ -94,6 +97,52 @@ export default function Expense() {
     setForm(prev => ({ ...prev, amount: parseFormattedNumber(formatted) }));
   };
 
+  const handleProofImageChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+      setProofPreview(null);
+      setForm(prev => ({ ...prev, proof_image: '' }));
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Hanya file gambar yang diperbolehkan (JPG, PNG, etc.)');
+      e.target.value = '';
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Ukuran file maksimal 5MB');
+      e.target.value = '';
+      return;
+    }
+
+    setIsUploading(true);
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result;
+      setProofPreview(base64);
+      setForm(prev => ({ ...prev, proof_image: base64 }));
+      setIsUploading(false);
+    };
+    reader.onerror = () => {
+      alert('Gagal membaca file');
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearProofImage = () => {
+    setProofPreview(null);
+    setForm(prev => ({ ...prev, proof_image: '' }));
+    // Reset file input
+    const fileInput = document.getElementById('proof-image-input');
+    if (fileInput) fileInput.value = '';
+  };
+
   const handleSubmit = async e => {
     e.preventDefault();
     try {
@@ -101,18 +150,24 @@ export default function Expense() {
         trans_date: form.trans_date,
         category: form.category || customCategory || 'Lainnya',
         description: form.description,
-        amount: Number(form.amount || 0)
+        amount: Number(form.amount || 0),
+        proof_image: form.proof_image || null
       };
       await api.post('/expenses', payload);
       setForm({
         trans_date: '',
         category: expensePresets[0]?.label || '',
         description: '',
-        amount: ''
+        amount: '',
+        proof_image: ''
       });
       setDisplayAmount('');
       setCategoryKey(expensePresets[0]?.label || '__custom');
       setCustomCategory('');
+      setProofPreview(null);
+      // Reset file input
+      const fileInput = document.getElementById('proof-image-input');
+      if (fileInput) fileInput.value = '';
       fetchItems();
     } catch (err) {
       handleAuthError(err);
@@ -260,6 +315,73 @@ export default function Expense() {
               />
             </div>
 
+            {/* Bukti Transaksi Upload */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Bukti Transaksi (Opsional)
+              </label>
+              <div className="flex items-center gap-3">
+                <label className="flex-1 cursor-pointer">
+                  <div className={`flex items-center justify-center gap-2 rounded-xl border-2 border-dashed ${proofPreview ? 'border-rose-300 bg-rose-50' : 'border-slate-200 bg-white'} px-4 py-3 transition hover:border-rose-400 hover:bg-rose-50`}>
+                    {isUploading ? (
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        <span className="text-sm">Memproses...</span>
+                      </div>
+                    ) : proofPreview ? (
+                      <div className="flex items-center gap-2 text-rose-600">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-sm font-medium">Bukti sudah diupload</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-sm">Upload foto/gambar bukti</span>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    id="proof-image-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleProofImageChange}
+                  />
+                </label>
+                {proofPreview && (
+                  <button
+                    type="button"
+                    onClick={clearProofImage}
+                    className="rounded-xl border border-slate-200 p-3 text-slate-500 transition hover:border-rose-300 hover:text-rose-600"
+                    title="Hapus bukti"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              
+              {/* Preview Image */}
+              {proofPreview && (
+                <div className="mt-2 relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                  <img 
+                    src={proofPreview} 
+                    alt="Preview bukti transaksi" 
+                    className="w-full h-40 object-contain"
+                  />
+                </div>
+              )}
+              <p className="text-xs text-slate-400">Format: JPG, PNG (Maks. 5MB)</p>
+            </div>
+
             <button className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-600/20 transition hover:opacity-95">
               Simpan Expense
             </button>
@@ -307,7 +429,18 @@ export default function Expense() {
                     onClick={() => setDetailItem(item)}
                   >
                     <td className="px-4 py-3 text-slate-700">{formatDate(item.trans_date)}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">{item.category}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">
+                      <div className="flex items-center gap-2">
+                        {item.category}
+                        {item.proof_image && (
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100" title="Ada bukti transaksi">
+                            <svg className="w-3 h-3 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-slate-600 hidden sm:table-cell">
                       {item.description || 'N/A'}
                     </td>
@@ -404,6 +537,39 @@ export default function Expense() {
                   <div className="p-4 rounded-xl bg-slate-50">
                     <p className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Deskripsi</p>
                     <p className="mt-1 text-sm text-slate-700">{detailItem.description || 'Tidak ada deskripsi'}</p>
+                  </div>
+
+                  {/* Bukti Transaksi */}
+                  <div className="p-4 rounded-xl bg-slate-50">
+                    <p className="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-2">Bukti Transaksi</p>
+                    {detailItem.proof_image ? (
+                      <div className="space-y-2">
+                        <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-white">
+                          <img 
+                            src={detailItem.proof_image} 
+                            alt="Bukti transaksi" 
+                            className="w-full max-h-64 object-contain cursor-pointer hover:opacity-90 transition"
+                            onClick={() => window.open(detailItem.proof_image, '_blank')}
+                          />
+                        </div>
+                        <button
+                          onClick={() => window.open(detailItem.proof_image, '_blank')}
+                          className="text-xs text-rose-600 hover:text-rose-700 font-medium flex items-center gap-1"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                          Lihat ukuran penuh
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-slate-400">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-sm">Tidak ada bukti transaksi</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Created Info */}

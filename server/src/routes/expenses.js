@@ -21,16 +21,19 @@ router.get('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
-// POST - Admin only
+// POST - Admin only (with proof_image support)
 router.post('/', requireAdmin, async (req, res) => {
-  const { trans_date, category, description, amount } = req.body;
+  const { trans_date, category, description, amount, proof_image } = req.body;
   try {
     const { rows } = await query(
-      'INSERT INTO expenses (trans_date, category, description, amount) VALUES ($1,$2,$3,$4) RETURNING *',
-      [trans_date, category, description, amount]
+      'INSERT INTO expenses (trans_date, category, description, amount, proof_image) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [trans_date, category, description, amount, proof_image || null]
     );
     res.status(201).json(rows[0]);
-  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+  } catch (err) { 
+    console.error('Error creating expense:', err);
+    res.status(500).json({ message: 'Server error' }); 
+  }
 });
 
 // POST /api/expenses/bulk - Bulk import (Admin only)
@@ -45,11 +48,11 @@ router.post('/bulk', requireAdmin, async (req, res) => {
     const errors = [];
 
     for (let i = 0; i < items.length; i++) {
-      const { trans_date, category, description, amount } = items[i];
+      const { trans_date, category, description, amount, proof_image } = items[i];
       try {
         const { rows } = await query(
-          'INSERT INTO expenses (trans_date, category, description, amount) VALUES ($1,$2,$3,$4) RETURNING *',
-          [trans_date, category || 'Lainnya', description || '', Number(amount) || 0]
+          'INSERT INTO expenses (trans_date, category, description, amount, proof_image) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+          [trans_date, category || 'Lainnya', description || '', Number(amount) || 0, proof_image || null]
         );
         results.push(rows[0]);
       } catch (err) {
@@ -69,13 +72,13 @@ router.post('/bulk', requireAdmin, async (req, res) => {
   }
 });
 
-// PUT - Admin only
+// PUT - Admin only (with proof_image support)
 router.put('/:id', requireAdmin, async (req, res) => {
-  const { trans_date, category, description, amount } = req.body;
+  const { trans_date, category, description, amount, proof_image } = req.body;
   try {
     const { rows } = await query(
-      'UPDATE expenses SET trans_date=$1, category=$2, description=$3, amount=$4 WHERE id=$5 RETURNING *',
-      [trans_date, category, description, amount, req.params.id]
+      'UPDATE expenses SET trans_date=$1, category=$2, description=$3, amount=$4, proof_image=$5 WHERE id=$6 RETURNING *',
+      [trans_date, category, description, amount, proof_image || null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ message: 'Not found' });
     res.json(rows[0]);

@@ -35,8 +35,20 @@ CREATE TABLE IF NOT EXISTS expenses (
   category TEXT NOT NULL,
   description TEXT,
   amount NUMERIC(18,2) NOT NULL,
+  proof_image TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add proof_image column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'expenses' AND column_name = 'proof_image'
+  ) THEN
+    ALTER TABLE expenses ADD COLUMN proof_image TEXT;
+  END IF;
+END $$;
 
 -- Loans
 CREATE TABLE IF NOT EXISTS loans (
