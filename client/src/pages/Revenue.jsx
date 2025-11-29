@@ -77,17 +77,6 @@ const formatDate = value => {
     : date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const parseIncomeDescription = value => {
-  if (!value) return null;
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && parsed.__type === 'income-v1') return parsed;
-  } catch {
-    return null;
-  }
-  return null;
-};
-
 const getWeekNumber = date => {
   const d = new Date(date);
   const year = d.getFullYear();
@@ -166,23 +155,15 @@ export default function Revenue() {
     incomes.forEach(item => {
       const key = getKey(item.trans_date);
       if (!groups[key]) {
-        groups[key] = { incomes: 0, expenses: 0, loans: 0, loading: 0, market: 0, broker: 0 };
+        groups[key] = { incomes: 0, expenses: 0, loans: 0 };
       }
       groups[key].incomes += Number(item.amount || 0);
-      
-      const parsed = parseIncomeDescription(item.description);
-      if (parsed && parsed.perLoadDeductions) {
-        const qty = parsed.quantity || 1;
-        groups[key].loading += (parsed.perLoadDeductions.loading || 0) * qty;
-        groups[key].market += (parsed.perLoadDeductions.market || 0) * qty;
-        groups[key].broker += (parsed.perLoadDeductions.broker || 0) * qty;
-      }
     });
 
     expenses.forEach(item => {
       const key = getKey(item.trans_date);
       if (!groups[key]) {
-        groups[key] = { incomes: 0, expenses: 0, loans: 0, loading: 0, market: 0, broker: 0 };
+        groups[key] = { incomes: 0, expenses: 0, loans: 0 };
       }
       groups[key].expenses += Number(item.amount || 0);
     });
@@ -190,7 +171,7 @@ export default function Revenue() {
     loans.forEach(item => {
       const key = getKey(item.trans_date);
       if (!groups[key]) {
-        groups[key] = { incomes: 0, expenses: 0, loans: 0, loading: 0, market: 0, broker: 0 };
+        groups[key] = { incomes: 0, expenses: 0, loans: 0 };
       }
       groups[key].loans += Number(item.amount || 0);
     });
@@ -211,36 +192,30 @@ export default function Revenue() {
     const totalLoans = groupedData.reduce((sum, item) => sum + item.loans, 0);
     const netRevenue = totalIncome - totalExpense - totalLoans;
     
-    const totalLoading = groupedData.reduce((sum, item) => sum + item.loading, 0);
-    const totalMarket = groupedData.reduce((sum, item) => sum + item.market, 0);
-    const totalBroker = groupedData.reduce((sum, item) => sum + item.broker, 0);
-    
-    return { totalIncome, totalExpense, totalLoans, netRevenue, totalLoading, totalMarket, totalBroker };
+    return { totalIncome, totalExpense, totalLoans, netRevenue };
   }, [groupedData]);
 
-  // All time totals for reference
-  const allTimeTotals = useMemo(() => {
-    const totalIncome = incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const totalExpense = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const totalLoans = loans.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const netRevenue = totalIncome - totalExpense - totalLoans;
-    
-    let totalLoading = 0;
-    let totalMarket = 0;
-    let totalBroker = 0;
-    
-    incomes.forEach(item => {
-      const parsed = parseIncomeDescription(item.description);
-      if (parsed && parsed.perLoadDeductions) {
-        const qty = parsed.quantity || 1;
-        totalLoading += (parsed.perLoadDeductions.loading || 0) * qty;
-        totalMarket += (parsed.perLoadDeductions.market || 0) * qty;
-        totalBroker += (parsed.perLoadDeductions.broker || 0) * qty;
-      }
+  // Category breakdown from database
+  const categoryBreakdown = useMemo(() => {
+    // Expense categories
+    const expenseByCategory = {};
+    expenses.forEach(item => {
+      const cat = (item.category || 'LAINNYA').toUpperCase();
+      expenseByCategory[cat] = (expenseByCategory[cat] || 0) + Number(item.amount || 0);
     });
-    
-    return { totalIncome, totalExpense, totalLoans, netRevenue, totalLoading, totalMarket, totalBroker };
-  }, [incomes, expenses, loans]);
+
+    // Income categories
+    const incomeByCategory = {};
+    incomes.forEach(item => {
+      const cat = (item.category || 'LAINNYA').toUpperCase();
+      incomeByCategory[cat] = (incomeByCategory[cat] || 0) + Number(item.amount || 0);
+    });
+
+    const totalExpense = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const totalIncome = incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    return { expenseByCategory, incomeByCategory, totalExpense, totalIncome };
+  }, [incomes, expenses]);
 
   const formatPeriodLabel = period => {
     if (timeFilter === 'daily') {
@@ -363,34 +338,98 @@ export default function Revenue() {
           </div>
         </div>
 
-        {/* Deductions Summary */}
+        {/* Income Breakdown by Category */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">
-            Summary Potongan ({TIME_FILTERS[timeFilter]})
+            Rincian Pendapatan
           </h3>
           
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-            <div className="p-4 rounded-xl bg-purple-50 border border-purple-100">
-              <p className="text-xs uppercase tracking-widest text-purple-600 mb-2">Loading</p>
-              <p className="text-xl font-bold text-purple-700">{formatCurrency(filteredTotals.totalLoading)}</p>
-            </div>
-            
-            <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
-              <p className="text-xs uppercase tracking-widest text-indigo-600 mb-2">Market</p>
-              <p className="text-xl font-bold text-indigo-700">{formatCurrency(filteredTotals.totalMarket)}</p>
-            </div>
-            
-            <div className="p-4 rounded-xl bg-cyan-50 border border-cyan-100">
-              <p className="text-xs uppercase tracking-widest text-cyan-600 mb-2">Broker</p>
-              <p className="text-xl font-bold text-cyan-700">{formatCurrency(filteredTotals.totalBroker)}</p>
-            </div>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            {Object.entries(categoryBreakdown.incomeByCategory || {})
+              .sort((a, b) => b[1] - a[1])
+              .map(([category, amount]) => {
+                const percentage = categoryBreakdown.totalIncome > 0 ? (amount / categoryBreakdown.totalIncome * 100).toFixed(1) : 0;
+                const colors = {
+                  'TRONTON': { bg: 'from-emerald-500 to-green-600', icon: '🚛' },
+                  'COLT DIESEL': { bg: 'from-blue-500 to-indigo-600', icon: '🚚' },
+                };
+                const color = colors[category] || { bg: 'from-slate-500 to-slate-600', icon: '💰' };
+                
+                return (
+                  <div key={category} className={`rounded-xl bg-gradient-to-br ${color.bg} p-4 text-white shadow-lg`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-2xl">{color.icon}</span>
+                      <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">{percentage}%</span>
+                    </div>
+                    <div className="text-sm font-medium opacity-90">{category}</div>
+                    <div className="text-xl font-bold mt-1">{formatCurrency(amount)}</div>
+                  </div>
+                );
+              })}
+            {Object.keys(categoryBreakdown.incomeByCategory || {}).length === 0 && (
+              <div className="col-span-full text-center text-slate-400 py-4">Tidak ada data pendapatan</div>
+            )}
           </div>
           
-          <div className="mt-4 p-4 rounded-xl bg-slate-100 border border-slate-200">
+          <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-emerald-100 to-emerald-50 border border-emerald-200">
             <div className="flex items-center justify-between">
-              <span className="font-medium text-slate-600">Total Potongan</span>
-              <span className="text-xl font-bold text-slate-900">
-                {formatCurrency(filteredTotals.totalLoading + filteredTotals.totalMarket + filteredTotals.totalBroker)}
+              <span className="font-medium text-emerald-700">Total Pendapatan</span>
+              <span className="text-xl font-bold text-emerald-700">
+                {formatCurrency(categoryBreakdown.totalIncome)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Expense Breakdown by Category */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">
+            Rincian Pengeluaran
+          </h3>
+          
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {Object.entries(categoryBreakdown.expenseByCategory || {})
+              .sort((a, b) => b[1] - a[1])
+              .map(([category, amount]) => {
+                const percentage = categoryBreakdown.totalExpense > 0 ? (amount / categoryBreakdown.totalExpense * 100).toFixed(1) : 0;
+                const colors = {
+                  'BBM': { bg: 'bg-orange-50', border: 'border-orange-100', text: 'text-orange-600', bar: 'bg-orange-500' },
+                  'UANG HARIAN': { bg: 'bg-blue-50', border: 'border-blue-100', text: 'text-blue-600', bar: 'bg-blue-500' },
+                  'PINJAMAN': { bg: 'bg-red-50', border: 'border-red-100', text: 'text-red-600', bar: 'bg-red-500' },
+                  'DEPOSIT': { bg: 'bg-purple-50', border: 'border-purple-100', text: 'text-purple-600', bar: 'bg-purple-500' },
+                  'BELANJA': { bg: 'bg-pink-50', border: 'border-pink-100', text: 'text-pink-600', bar: 'bg-pink-500' },
+                  'MAKAN MINUM': { bg: 'bg-amber-50', border: 'border-amber-100', text: 'text-amber-600', bar: 'bg-amber-500' },
+                  'BOP': { bg: 'bg-teal-50', border: 'border-teal-100', text: 'text-teal-600', bar: 'bg-teal-500' },
+                  'OPERASIONAL': { bg: 'bg-indigo-50', border: 'border-indigo-100', text: 'text-indigo-600', bar: 'bg-indigo-500' },
+                  'SPAREPART': { bg: 'bg-cyan-50', border: 'border-cyan-100', text: 'text-cyan-600', bar: 'bg-cyan-500' },
+                };
+                const color = colors[category] || { bg: 'bg-slate-50', border: 'border-slate-100', text: 'text-slate-600', bar: 'bg-slate-500' };
+                
+                return (
+                  <div key={category} className={`p-3 rounded-lg ${color.bg} ${color.border} border`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-xs font-semibold uppercase ${color.text}`}>{category}</span>
+                      <span className={`text-sm font-bold ${color.text}`}>{formatCurrency(amount)}</span>
+                    </div>
+                    <div className="w-full bg-white/50 rounded-full h-1.5">
+                      <div className={`h-1.5 rounded-full ${color.bar}`} style={{ width: `${percentage}%` }}></div>
+                    </div>
+                    <div className="text-right mt-1">
+                      <span className="text-xs text-slate-500">{percentage}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            {Object.keys(categoryBreakdown.expenseByCategory || {}).length === 0 && (
+              <div className="text-center text-slate-400 py-4">Tidak ada data pengeluaran</div>
+            )}
+          </div>
+          
+          <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-rose-100 to-rose-50 border border-rose-200">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-rose-700">Total Pengeluaran</span>
+              <span className="text-xl font-bold text-rose-700">
+                {formatCurrency(categoryBreakdown.totalExpense)}
               </span>
             </div>
           </div>
