@@ -3,10 +3,64 @@ import { useEffect, useState, useMemo } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config.js';
 
+// Pie Chart Component
+function PieChart({ data, size = 200 }) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  if (total === 0) {
+    return (
+      <div className="flex items-center justify-center" style={{ width: size, height: size }}>
+        <div className="text-slate-400 text-sm">No data</div>
+      </div>
+    );
+  }
+
+  let currentAngle = 0;
+  const radius = size / 2;
+  const centerX = radius;
+  const centerY = radius;
+
+  const paths = data.map((item, index) => {
+    const percentage = item.value / total;
+    const angle = percentage * 360;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + angle;
+    currentAngle = endAngle;
+
+    const startRad = (startAngle - 90) * (Math.PI / 180);
+    const endRad = (endAngle - 90) * (Math.PI / 180);
+
+    const x1 = centerX + radius * Math.cos(startRad);
+    const y1 = centerY + radius * Math.sin(startRad);
+    const x2 = centerX + radius * Math.cos(endRad);
+    const y2 = centerY + radius * Math.sin(endRad);
+
+    const largeArc = angle > 180 ? 1 : 0;
+    const pathD = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+    return (
+      <path
+        key={index}
+        d={pathD}
+        fill={item.color}
+        stroke="white"
+        strokeWidth="3"
+        className="transition-all duration-300 hover:opacity-80"
+      />
+    );
+  });
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="drop-shadow-lg">
+      {paths}
+      <circle cx={centerX} cy={centerY} r={radius * 0.5} fill="white" />
+    </svg>
+  );
+}
+
 const TIME_FILTERS = {
-  daily: 'Daily',
-  weekly: 'Weekly',
-  monthly: 'Monthly'
+  daily: 'Harian',
+  weekly: 'Mingguan',
+  monthly: 'Bulanan'
 };
 
 const formatCurrency = value => {
@@ -21,17 +75,6 @@ const formatDate = value => {
   return Number.isNaN(date.getTime())
     ? value
     : date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-};
-
-const parseIncomeDescription = value => {
-  if (!value) return null;
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && parsed.__type === 'income-v1') return parsed;
-  } catch {
-    return null;
-  }
-  return null;
 };
 
 const getWeekNumber = date => {
@@ -57,7 +100,7 @@ export default function Revenue() {
   const token = localStorage.getItem('token');
   const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
   
-  const [timeFilter, setTimeFilter] = useState('daily');
+  const [timeFilter, setTimeFilter] = useState('monthly');
   const [incomes, setIncomes] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [loans, setLoans] = useState([]);
@@ -109,47 +152,30 @@ export default function Revenue() {
 
     const groups = {};
 
-    // Group incomes
     incomes.forEach(item => {
       const key = getKey(item.trans_date);
       if (!groups[key]) {
-        groups[key] = { incomes: 0, expenses: 0, loans: 0, items: [], loading: 0, market: 0, broker: 0 };
+        groups[key] = { incomes: 0, expenses: 0, loans: 0 };
       }
       groups[key].incomes += Number(item.amount || 0);
-      
-      // Parse deductions from income description
-      const parsed = parseIncomeDescription(item.description);
-      if (parsed && parsed.perLoadDeductions) {
-        const qty = parsed.quantity || 1;
-        groups[key].loading += (parsed.perLoadDeductions.loading || 0) * qty;
-        groups[key].market += (parsed.perLoadDeductions.market || 0) * qty;
-        groups[key].broker += (parsed.perLoadDeductions.broker || 0) * qty;
-      }
-      
-      groups[key].items.push({ ...item, type: 'income' });
     });
 
-    // Group expenses
     expenses.forEach(item => {
       const key = getKey(item.trans_date);
       if (!groups[key]) {
-        groups[key] = { incomes: 0, expenses: 0, loans: 0, items: [], loading: 0, market: 0, broker: 0 };
+        groups[key] = { incomes: 0, expenses: 0, loans: 0 };
       }
       groups[key].expenses += Number(item.amount || 0);
-      groups[key].items.push({ ...item, type: 'expense' });
     });
 
-    // Group loans
     loans.forEach(item => {
       const key = getKey(item.trans_date);
       if (!groups[key]) {
-        groups[key] = { incomes: 0, expenses: 0, loans: 0, items: [], loading: 0, market: 0, broker: 0 };
+        groups[key] = { incomes: 0, expenses: 0, loans: 0 };
       }
       groups[key].loans += Number(item.amount || 0);
-      groups[key].items.push({ ...item, type: 'loan' });
     });
 
-    // Calculate net revenue for each group
     Object.keys(groups).forEach(key => {
       groups[key].netRevenue = groups[key].incomes - groups[key].expenses - groups[key].loans;
     });
@@ -159,29 +185,37 @@ export default function Revenue() {
       .map(([period, data]) => ({ period, ...data }));
   }, [incomes, expenses, loans, timeFilter]);
 
-  const totals = useMemo(() => {
-    const totalIncome = incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const totalExpense = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const totalLoans = loans.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  // Filtered totals based on time period
+  const filteredTotals = useMemo(() => {
+    const totalIncome = groupedData.reduce((sum, item) => sum + item.incomes, 0);
+    const totalExpense = groupedData.reduce((sum, item) => sum + item.expenses, 0);
+    const totalLoans = groupedData.reduce((sum, item) => sum + item.loans, 0);
     const netRevenue = totalIncome - totalExpense - totalLoans;
     
-    // Calculate total deductions
-    let totalLoading = 0;
-    let totalMarket = 0;
-    let totalBroker = 0;
-    
-    incomes.forEach(item => {
-      const parsed = parseIncomeDescription(item.description);
-      if (parsed && parsed.perLoadDeductions) {
-        const qty = parsed.quantity || 1;
-        totalLoading += (parsed.perLoadDeductions.loading || 0) * qty;
-        totalMarket += (parsed.perLoadDeductions.market || 0) * qty;
-        totalBroker += (parsed.perLoadDeductions.broker || 0) * qty;
-      }
+    return { totalIncome, totalExpense, totalLoans, netRevenue };
+  }, [groupedData]);
+
+  // Category breakdown from database
+  const categoryBreakdown = useMemo(() => {
+    // Expense categories
+    const expenseByCategory = {};
+    expenses.forEach(item => {
+      const cat = (item.category || 'LAINNYA').toUpperCase();
+      expenseByCategory[cat] = (expenseByCategory[cat] || 0) + Number(item.amount || 0);
     });
-    
-    return { totalIncome, totalExpense, totalLoans, netRevenue, totalLoading, totalMarket, totalBroker };
-  }, [incomes, expenses, loans]);
+
+    // Income categories
+    const incomeByCategory = {};
+    incomes.forEach(item => {
+      const cat = (item.category || 'LAINNYA').toUpperCase();
+      incomeByCategory[cat] = (incomeByCategory[cat] || 0) + Number(item.amount || 0);
+    });
+
+    const totalExpense = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const totalIncome = incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    return { expenseByCategory, incomeByCategory, totalExpense, totalIncome };
+  }, [incomes, expenses]);
 
   const formatPeriodLabel = period => {
     if (timeFilter === 'daily') {
@@ -192,31 +226,22 @@ export default function Revenue() {
       const year = parts[0];
       const month = parts[1];
       const week = parts[2].replace('W', '');
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return `${monthNames[parseInt(month) - 1]} ${year} - Week ${week}`;
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      return `${monthNames[parseInt(month) - 1]} ${year} - Minggu ${week}`;
     }
     if (timeFilter === 'monthly') {
       const [year, month] = period.split('-');
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
       return `${monthNames[parseInt(month) - 1]} ${year}`;
     }
     return period;
   };
 
-  // Chart calculations
-  const chartData = useMemo(() => {
-    const displayData = [...groupedData].reverse().slice(-10);
-    const maxValue = Math.max(
-      ...displayData.map(d => Math.max(d.incomes, d.expenses + d.loans, Math.abs(d.netRevenue)))
-    );
-    return { displayData, maxValue: maxValue || 1 };
-  }, [groupedData]);
-
   if (loading) {
     return (
       <Layout>
         <div className="flex h-96 items-center justify-center">
-          <div className="text-slate-500">Loading revenue data...</div>
+          <div className="text-slate-500">Loading...</div>
         </div>
       </Layout>
     );
@@ -225,23 +250,23 @@ export default function Revenue() {
   return (
     <Layout>
       <div className="space-y-6">
-        {/* Header Section */}
-        <section className="rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 p-6 sm:p-8 text-white shadow-2xl">
-          <p className="text-xs uppercase tracking-[0.35em] text-white/70">Revenue Analytics</p>
-          <h1 className="mt-2 text-2xl sm:text-3xl font-bold">Revenue Dashboard</h1>
-        </section>
+        {/* Header */}
+        <div className="rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 p-6 text-white">
+          <p className="text-xs uppercase tracking-widest text-white/70">Analytics</p>
+          <h1 className="mt-1 text-2xl font-bold">Revenue</h1>
+        </div>
 
         {/* Time Filter */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-slate-900">Pilih Periode</h2>
-          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-900">Periode</h2>
+          <div className="flex gap-1 rounded-full border border-slate-200 bg-white p-1">
             {Object.entries(TIME_FILTERS).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setTimeFilter(key)}
                 className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                   timeFilter === key
-                    ? 'bg-slate-900 text-white shadow'
+                    ? 'bg-slate-900 text-white'
                     : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
@@ -251,204 +276,216 @@ export default function Revenue() {
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
-            <p className="text-xs uppercase tracking-widest text-emerald-600">Total Income</p>
-            <p className="mt-2 text-lg sm:text-xl font-semibold text-emerald-700">{formatCurrency(totals.totalIncome)}</p>
-          </div>
-          <div className="rounded-xl border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4 shadow-sm">
-            <p className="text-xs uppercase tracking-widest text-rose-600">Total Expenses</p>
-            <p className="mt-2 text-lg sm:text-xl font-semibold text-rose-700">{formatCurrency(totals.totalExpense)}</p>
-          </div>
-          <div className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm">
-            <p className="text-xs uppercase tracking-widest text-amber-600">Total Loans</p>
-            <p className="mt-2 text-lg sm:text-xl font-semibold text-amber-700">{formatCurrency(totals.totalLoans)}</p>
-          </div>
-          <div className={`rounded-xl border p-4 shadow-lg ${
-            totals.netRevenue >= 0
-              ? 'border-blue-100 bg-gradient-to-br from-blue-50 to-white'
-              : 'border-red-100 bg-gradient-to-br from-red-50 to-white'
-          }`}>
-            <p className={`text-xs uppercase tracking-widest ${
-              totals.netRevenue >= 0 ? 'text-blue-600' : 'text-red-600'
-            }`}>
-              Net Revenue
-            </p>
-            <p className={`mt-2 text-lg sm:text-xl font-semibold ${
-              totals.netRevenue >= 0 ? 'text-blue-700' : 'text-red-700'
-            }`}>
-              {formatCurrency(totals.netRevenue)}
-            </p>
-          </div>
-        </div>
-
-        {/* Deductions Summary */}
-        <div className="grid gap-4 grid-cols-3">
-          <div className="rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50 to-white p-4 shadow-sm">
-            <p className="text-xs uppercase tracking-widest text-purple-600">Total Loading</p>
-            <p className="mt-2 text-lg font-semibold text-purple-700">{formatCurrency(totals.totalLoading)}</p>
-          </div>
-          <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
-            <p className="text-xs uppercase tracking-widest text-indigo-600">Total Market</p>
-            <p className="mt-2 text-lg font-semibold text-indigo-700">{formatCurrency(totals.totalMarket)}</p>
-          </div>
-          <div className="rounded-xl border border-cyan-100 bg-gradient-to-br from-cyan-50 to-white p-4 shadow-sm">
-            <p className="text-xs uppercase tracking-widest text-cyan-600">Total Broker</p>
-            <p className="mt-2 text-lg font-semibold text-cyan-700">{formatCurrency(totals.totalBroker)}</p>
-          </div>
-        </div>
-
-        {/* Revenue Chart */}
-        <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 sm:p-6 shadow-xl backdrop-blur">
-          <h2 className="text-xl font-semibold text-slate-900 mb-4">Grafik Revenue ({TIME_FILTERS[timeFilter]})</h2>
+        {/* Main Content - Pie Chart & Summary */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-6">
+            Distribusi Keuangan ({TIME_FILTERS[timeFilter]})
+          </h3>
           
-          <div className="chart-container">
-            {chartData.displayData.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-slate-400">
-                Tidak ada data untuk ditampilkan
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Pie Chart */}
+            <div className="flex justify-center lg:justify-start">
+              <PieChart 
+                data={[
+                  { value: filteredTotals.totalIncome, color: '#10b981' },
+                  { value: filteredTotals.totalExpense, color: '#f43f5e' },
+                  { value: filteredTotals.totalLoans, color: '#f59e0b' }
+                ]}
+                size={200}
+              />
+            </div>
+            
+            {/* Summary List */}
+            <div className="flex-1 space-y-3">
+              <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-50 border border-emerald-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded-full bg-emerald-500"></div>
+                  <span className="font-medium text-slate-700">Income</span>
+                </div>
+                <span className="font-bold text-emerald-600">{formatCurrency(filteredTotals.totalIncome)}</span>
               </div>
-            ) : (
-              <div className="h-full flex items-end gap-2 sm:gap-4 pb-8 pt-4 px-2">
-                {chartData.displayData.map((item, idx) => {
-                  const incomeHeight = (item.incomes / chartData.maxValue) * 100;
-                  const expenseHeight = (item.expenses / chartData.maxValue) * 100;
-                  const loanHeight = (item.loans / chartData.maxValue) * 100;
-                  const netHeight = (Math.abs(item.netRevenue) / chartData.maxValue) * 100;
-                  
-                  return (
-                    <div key={idx} className="flex-1 flex flex-col items-center gap-1 group">
-                      <div className="w-full flex gap-1 items-end justify-center h-56 sm:h-72">
-                        {/* Income Bar */}
-                        <div 
-                          className="w-1/4 bg-gradient-to-t from-emerald-500 to-emerald-400 rounded-t transition-all duration-300 hover:from-emerald-600 hover:to-emerald-500 relative group/bar"
-                          style={{ height: `${Math.max(incomeHeight, 2)}%` }}
-                          title={`Income: ${formatCurrency(item.incomes)}`}
-                        >
-                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover/bar:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap">
-                            {formatCurrency(item.incomes)}
-                          </div>
-                        </div>
-                        {/* Expense Bar */}
-                        <div 
-                          className="w-1/4 bg-gradient-to-t from-rose-500 to-rose-400 rounded-t transition-all duration-300 hover:from-rose-600 hover:to-rose-500 relative group/bar"
-                          style={{ height: `${Math.max(expenseHeight, 2)}%` }}
-                          title={`Expense: ${formatCurrency(item.expenses)}`}
-                        >
-                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover/bar:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap">
-                            {formatCurrency(item.expenses)}
-                          </div>
-                        </div>
-                        {/* Loan Bar */}
-                        <div 
-                          className="w-1/4 bg-gradient-to-t from-amber-500 to-amber-400 rounded-t transition-all duration-300 hover:from-amber-600 hover:to-amber-500 relative group/bar"
-                          style={{ height: `${Math.max(loanHeight, 2)}%` }}
-                          title={`Loan: ${formatCurrency(item.loans)}`}
-                        >
-                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover/bar:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap">
-                            {formatCurrency(item.loans)}
-                          </div>
-                        </div>
-                        {/* Net Revenue Bar */}
-                        <div 
-                          className={`w-1/4 rounded-t transition-all duration-300 relative group/bar ${
-                            item.netRevenue >= 0 
-                              ? 'bg-gradient-to-t from-blue-500 to-blue-400 hover:from-blue-600 hover:to-blue-500' 
-                              : 'bg-gradient-to-t from-red-500 to-red-400 hover:from-red-600 hover:to-red-500'
-                          }`}
-                          style={{ height: `${Math.max(netHeight, 2)}%` }}
-                          title={`Net: ${formatCurrency(item.netRevenue)}`}
-                        >
-                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover/bar:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap">
-                            {formatCurrency(item.netRevenue)}
-                          </div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] sm:text-xs text-slate-500 text-center truncate max-w-full px-1">
-                        {timeFilter === 'daily' ? formatDate(item.period).split(' ').slice(0, 2).join(' ') : formatPeriodLabel(item.period).split(' ').slice(0, 2).join(' ')}
-                      </span>
+              
+              <div className="flex items-center justify-between p-4 rounded-xl bg-rose-50 border border-rose-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded-full bg-rose-500"></div>
+                  <span className="font-medium text-slate-700">Expenses</span>
+                </div>
+                <span className="font-bold text-rose-600">{formatCurrency(filteredTotals.totalExpense)}</span>
+              </div>
+              
+              <div className="flex items-center justify-between p-4 rounded-xl bg-amber-50 border border-amber-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded-full bg-amber-500"></div>
+                  <span className="font-medium text-slate-700">Loans</span>
+                </div>
+                <span className="font-bold text-amber-600">{formatCurrency(filteredTotals.totalLoans)}</span>
+              </div>
+              
+              <div className={`flex items-center justify-between p-4 rounded-xl ${
+                filteredTotals.netRevenue >= 0 
+                  ? 'bg-blue-50 border border-blue-100' 
+                  : 'bg-red-50 border border-red-100'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-4 h-4 rounded-full ${filteredTotals.netRevenue >= 0 ? 'bg-blue-500' : 'bg-red-500'}`}></div>
+                  <span className="font-medium text-slate-700">Net Revenue</span>
+                </div>
+                <span className={`font-bold ${filteredTotals.netRevenue >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                  {formatCurrency(filteredTotals.netRevenue)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Income Breakdown by Category */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">
+            Rincian Pendapatan
+          </h3>
+          
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            {Object.entries(categoryBreakdown.incomeByCategory || {})
+              .sort((a, b) => b[1] - a[1])
+              .map(([category, amount]) => {
+                const percentage = categoryBreakdown.totalIncome > 0 ? (amount / categoryBreakdown.totalIncome * 100).toFixed(1) : 0;
+                const colors = {
+                  'TRONTON': { bg: 'from-emerald-500 to-green-600', icon: '🚛' },
+                  'COLT DIESEL': { bg: 'from-blue-500 to-indigo-600', icon: '🚚' },
+                };
+                const color = colors[category] || { bg: 'from-slate-500 to-slate-600', icon: '💰' };
+                
+                return (
+                  <div key={category} className={`rounded-xl bg-gradient-to-br ${color.bg} p-4 text-white shadow-lg`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-2xl">{color.icon}</span>
+                      <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">{percentage}%</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="text-sm font-medium opacity-90">{category}</div>
+                    <div className="text-xl font-bold mt-1">{formatCurrency(amount)}</div>
+                  </div>
+                );
+              })}
+            {Object.keys(categoryBreakdown.incomeByCategory || {}).length === 0 && (
+              <div className="col-span-full text-center text-slate-400 py-4">Tidak ada data pendapatan</div>
             )}
           </div>
           
-          {/* Chart Legend */}
-          <div className="flex flex-wrap justify-center gap-4 mt-4 pt-4 border-t border-slate-100">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-emerald-500"></div>
-              <span className="text-xs text-slate-600">Income</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-rose-500"></div>
-              <span className="text-xs text-slate-600">Expense</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-amber-500"></div>
-              <span className="text-xs text-slate-600">Loan</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-blue-500"></div>
-              <span className="text-xs text-slate-600">Net (+)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-red-500"></div>
-              <span className="text-xs text-slate-600">Net (-)</span>
+          <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-emerald-100 to-emerald-50 border border-emerald-200">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-emerald-700">Total Pendapatan</span>
+              <span className="text-xl font-bold text-emerald-700">
+                {formatCurrency(categoryBreakdown.totalIncome)}
+              </span>
             </div>
           </div>
-        </section>
+        </div>
+
+        {/* Expense Breakdown by Category */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">
+            Rincian Pengeluaran
+          </h3>
+          
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {Object.entries(categoryBreakdown.expenseByCategory || {})
+              .sort((a, b) => b[1] - a[1])
+              .map(([category, amount]) => {
+                const percentage = categoryBreakdown.totalExpense > 0 ? (amount / categoryBreakdown.totalExpense * 100).toFixed(1) : 0;
+                const colors = {
+                  'BBM': { bg: 'bg-orange-50', border: 'border-orange-100', text: 'text-orange-600', bar: 'bg-orange-500' },
+                  'UANG HARIAN': { bg: 'bg-blue-50', border: 'border-blue-100', text: 'text-blue-600', bar: 'bg-blue-500' },
+                  'PINJAMAN': { bg: 'bg-red-50', border: 'border-red-100', text: 'text-red-600', bar: 'bg-red-500' },
+                  'DEPOSIT': { bg: 'bg-purple-50', border: 'border-purple-100', text: 'text-purple-600', bar: 'bg-purple-500' },
+                  'BELANJA': { bg: 'bg-pink-50', border: 'border-pink-100', text: 'text-pink-600', bar: 'bg-pink-500' },
+                  'MAKAN MINUM': { bg: 'bg-amber-50', border: 'border-amber-100', text: 'text-amber-600', bar: 'bg-amber-500' },
+                  'BOP': { bg: 'bg-teal-50', border: 'border-teal-100', text: 'text-teal-600', bar: 'bg-teal-500' },
+                  'OPERASIONAL': { bg: 'bg-indigo-50', border: 'border-indigo-100', text: 'text-indigo-600', bar: 'bg-indigo-500' },
+                  'SPAREPART': { bg: 'bg-cyan-50', border: 'border-cyan-100', text: 'text-cyan-600', bar: 'bg-cyan-500' },
+                };
+                const color = colors[category] || { bg: 'bg-slate-50', border: 'border-slate-100', text: 'text-slate-600', bar: 'bg-slate-500' };
+                
+                return (
+                  <div key={category} className={`p-3 rounded-lg ${color.bg} ${color.border} border`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-xs font-semibold uppercase ${color.text}`}>{category}</span>
+                      <span className={`text-sm font-bold ${color.text}`}>{formatCurrency(amount)}</span>
+                    </div>
+                    <div className="w-full bg-white/50 rounded-full h-1.5">
+                      <div className={`h-1.5 rounded-full ${color.bar}`} style={{ width: `${percentage}%` }}></div>
+                    </div>
+                    <div className="text-right mt-1">
+                      <span className="text-xs text-slate-500">{percentage}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            {Object.keys(categoryBreakdown.expenseByCategory || {}).length === 0 && (
+              <div className="text-center text-slate-400 py-4">Tidak ada data pengeluaran</div>
+            )}
+          </div>
+          
+          <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-rose-100 to-rose-50 border border-rose-200">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-rose-700">Total Pengeluaran</span>
+              <span className="text-xl font-bold text-rose-700">
+                {formatCurrency(categoryBreakdown.totalExpense)}
+              </span>
+            </div>
+          </div>
+        </div>
 
         {/* Revenue Table */}
-        <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 sm:p-6 shadow-xl backdrop-blur">
-          <h2 className="text-xl font-semibold text-slate-900 mb-4">
-            {TIME_FILTERS[timeFilter]} Revenue Breakdown
-          </h2>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">
+            Detail Revenue ({TIME_FILTERS[timeFilter]})
+          </h3>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-100">
-            <table className="min-w-full divide-y divide-slate-100 text-sm">
-              <thead className="bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-widest text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">Period</th>
-                  <th className="px-4 py-3 text-right">Income</th>
-                  <th className="px-4 py-3 text-right hidden sm:table-cell">Expenses</th>
-                  <th className="px-4 py-3 text-right hidden sm:table-cell">Loans</th>
-                  <th className="px-4 py-3 text-right">Net Revenue</th>
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Periode</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Income</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500 hidden sm:table-cell">Expense</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500 hidden sm:table-cell">Loan</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Net</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {groupedData.length === 0 && (
+              <tbody className="divide-y divide-slate-100">
+                {groupedData.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-4 py-6 text-center text-slate-400">
-                      No data available for the selected period
+                    <td colSpan="5" className="px-4 py-8 text-center text-slate-400">
+                      Tidak ada data
                     </td>
                   </tr>
+                ) : (
+                  groupedData.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        {formatPeriodLabel(row.period)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-emerald-600 font-medium">
+                        {formatCurrency(row.incomes)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-rose-600 font-medium hidden sm:table-cell">
+                        {formatCurrency(row.expenses)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-amber-600 font-medium hidden sm:table-cell">
+                        {formatCurrency(row.loans)}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-bold ${
+                        row.netRevenue >= 0 ? 'text-blue-600' : 'text-red-600'
+                      }`}>
+                        {formatCurrency(row.netRevenue)}
+                      </td>
+                    </tr>
+                  ))
                 )}
-                {groupedData.map((row, idx) => (
-                  <tr key={idx} className="transition hover:bg-slate-50/60">
-                    <td className="px-4 py-3 font-semibold text-slate-900">
-                      {formatPeriodLabel(row.period)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-emerald-600">
-                      {formatCurrency(row.incomes)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-rose-600 hidden sm:table-cell">
-                      {formatCurrency(row.expenses)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-amber-600 hidden sm:table-cell">
-                      {formatCurrency(row.loans)}
-                    </td>
-                    <td className={`px-4 py-3 text-right font-semibold ${
-                      row.netRevenue >= 0 ? 'text-blue-700' : 'text-red-700'
-                    }`}>
-                      {formatCurrency(row.netRevenue)}
-                    </td>
-                  </tr>
-                ))}
               </tbody>
             </table>
           </div>
-        </section>
+        </div>
       </div>
     </Layout>
   );

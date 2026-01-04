@@ -18,6 +18,8 @@ export default function Login() {
     try {
       const { data } = await axios.post(`${API_BASE_URL}/auth/login`, { username, password });
       localStorage.setItem('token', data.token);
+      localStorage.setItem('userRole', data.role || 'admin');
+      localStorage.setItem('username', username);
       setShowSplash(true);
       setTimeout(() => {
         navigate('/');
@@ -29,26 +31,175 @@ export default function Login() {
     }
   };
 
+  // Get splash screen content based on username
+  const getSplashContent = () => {
+    if (username === 'dzikri123') {
+      return {
+        letters: [
+          { char: 'H', className: 'h' },
+          { char: 'A', className: 'a' },
+          { char: 'L', className: 'l' },
+          { char: 'O', className: 'o' },
+          { char: ' ', className: 'space' },
+          { char: 'B', className: 'b' },
+          { char: 'O', className: 'o2' },
+          { char: 'S', className: 's' },
+          { char: ' ', className: 'space2' },
+          { char: 'D', className: 'd' },
+          { char: 'Z', className: 'z' },
+          { char: 'I', className: 'i' },
+          { char: 'K', className: 'k' },
+          { char: 'R', className: 'r' },
+          { char: 'I', className: 'i2' },
+        ],
+        subtext: '~* SeManGaT bOzZ dZiKrI *~',
+        emojis: { top: '👑💎✨', bottom: '🚀💰🔥' }
+      };
+    }
+    // Default for admin and others
+    return {
+      letters: [
+        { char: 'H', className: 'h' },
+        { char: 'A', className: 'a' },
+        { char: 'L', className: 'l' },
+        { char: 'O', className: 'o' },
+        { char: ' ', className: 'space' },
+        { char: 'Y', className: 'y' },
+        { char: 'O', className: 'o2' },
+        { char: 'L', className: 'l2' },
+      ],
+      subtext: '~* SaBaR yAaA bOzZ *~',
+      emojis: { top: '🔥💯✨', bottom: '💎🚀🌟' }
+    };
+  };
+
   if (showSplash) {
+    const splashContent = getSplashContent();
+    
+    // Special 3D Excavator splash for dzikri123
+    if (username === 'dzikri123') {
+      return (
+        <div className="excavator-splash">
+          {/* 3D Scene Container */}
+          <div className="scene-3d">
+            {/* Sky Background */}
+            <div className="sky">
+              <div className="sun"></div>
+              <div className="cloud cloud-1"></div>
+              <div className="cloud cloud-2"></div>
+              <div className="cloud cloud-3"></div>
+            </div>
+            
+            {/* Ground / Sand Area */}
+            <div className="ground">
+              <div className="sand-texture"></div>
+              <div className="sand-pile"></div>
+              <div className="sand-pile pile-2"></div>
+              <div className="sand-pile pile-3"></div>
+            </div>
+
+            {/* 3D Excavator */}
+            <div className="excavator">
+              {/* Tracks */}
+              <div className="excavator-tracks">
+                <div className="track track-left">
+                  <div className="track-wheel"></div>
+                  <div className="track-wheel wheel-back"></div>
+                  <div className="track-belt"></div>
+                </div>
+                <div className="track track-right">
+                  <div className="track-wheel"></div>
+                  <div className="track-wheel wheel-back"></div>
+                  <div className="track-belt"></div>
+                </div>
+              </div>
+              
+              {/* Body */}
+              <div className="excavator-body">
+                <div className="body-main">
+                  <div className="body-front"></div>
+                  <div className="body-top"></div>
+                  <div className="body-side"></div>
+                </div>
+                <div className="cabin">
+                  <div className="cabin-window"></div>
+                  <div className="cabin-roof"></div>
+                </div>
+                <div className="exhaust">
+                  <div className="smoke smoke-1"></div>
+                  <div className="smoke smoke-2"></div>
+                  <div className="smoke smoke-3"></div>
+                </div>
+              </div>
+              
+              {/* Arm */}
+              <div className="excavator-arm">
+                <div className="arm-boom">
+                  <div className="hydraulic"></div>
+                </div>
+                <div className="arm-stick">
+                  <div className="hydraulic stick-hydraulic"></div>
+                </div>
+                <div className="bucket">
+                  <div className="bucket-teeth"></div>
+                  <div className="sand-in-bucket"></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Falling Sand Particles */}
+            <div className="falling-sand">
+              {[...Array(30)].map((_, i) => (
+                <div 
+                  key={i} 
+                  className="sand-particle" 
+                  style={{ 
+                    '--delay': `${i * 0.15}s`, 
+                    '--x': `${50 + (Math.random() - 0.5) * 30}%`,
+                    '--size': `${3 + Math.random() * 5}px`
+                  }} 
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Text Overlay */}
+          <div className="excavator-splash-text">
+            <h1 className="excavator-title">
+              <span className="title-line">HALO BOS</span>
+              <span className="title-name">DZIKRI</span>
+            </h1>
+            <p className="excavator-subtitle">PT. DZIKRY MULTI LABA</p>
+          </div>
+
+          {/* Loading Bar */}
+          <div className="excavator-loading">
+            <div className="loading-track">
+              <div className="loading-progress"></div>
+            </div>
+            <span className="loading-text">Memuat sistem...</span>
+          </div>
+        </div>
+      );
+    }
+    
+    // Default splash for other users
     return (
       <div className="splash-screen">
         <div className="splash-content">
-          <div className="splash-emoji">🔥💯✨</div>
+          <div className="splash-emoji">{splashContent.emojis.top}</div>
           <h1 className="splash-text">
-            <span className="letter h">H</span>
-            <span className="letter a">A</span>
-            <span className="letter l">L</span>
-            <span className="letter o">O</span>
-            <span className="letter space">&nbsp;</span>
-            <span className="letter y">Y</span>
-            <span className="letter o2">O</span>
-            <span className="letter l2">L</span>
+            {splashContent.letters.map((letter, idx) => (
+              <span key={idx} className={`letter ${letter.className}`}>
+                {letter.char === ' ' ? '\u00A0' : letter.char}
+              </span>
+            ))}
           </h1>
-          <div className="splash-emoji bottom">💎🚀🌟</div>
+          <div className="splash-emoji bottom">{splashContent.emojis.bottom}</div>
           <div className="splash-loading">
             <div className="loading-bar"></div>
           </div>
-          <p className="splash-subtext">~* SaBaR yAaA bOzZ *~</p>
+          <p className="splash-subtext">{splashContent.subtext}</p>
         </div>
         <div className="splash-particles">
           {[...Array(20)].map((_, i) => (

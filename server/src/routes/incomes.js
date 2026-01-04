@@ -1,11 +1,11 @@
 import express from 'express';
-import { verifyToken } from '../middleware/auth.js';
+import { verifyToken, requireAdmin } from '../middleware/auth.js';
 import { query } from '../db.js';
 
 const router = express.Router();
 router.use(verifyToken);
 
-// GET /api/incomes
+// GET /api/incomes - All users can view
 router.get('/', async (req, res) => {
   try {
     const { rows } = await query('SELECT * FROM incomes ORDER BY trans_date DESC');
@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/incomes/:id
+// GET /api/incomes/:id - All users can view
 router.get('/:id', async (req, res) => {
   try {
     const { rows } = await query('SELECT * FROM incomes WHERE id=$1', [req.params.id]);
@@ -25,8 +25,8 @@ router.get('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
-// POST /api/incomes
-router.post('/', async (req, res) => {
+// POST /api/incomes - Admin only
+router.post('/', requireAdmin, async (req, res) => {
   const { trans_date, category, description, amount } = req.body;
   try {
     const { rows } = await query(
@@ -37,8 +37,44 @@ router.post('/', async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
-// PUT /api/incomes/:id
-router.put('/:id', async (req, res) => {
+// POST /api/incomes/bulk - Bulk import (Admin only)
+router.post('/bulk', requireAdmin, async (req, res) => {
+  const { items } = req.body;
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ message: 'Items array is required' });
+  }
+
+  try {
+    const results = [];
+    const errors = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const { trans_date, category, description, amount } = items[i];
+      try {
+        const { rows } = await query(
+          'INSERT INTO incomes (trans_date, category, description, amount) VALUES ($1,$2,$3,$4) RETURNING *',
+          [trans_date, category || 'Lainnya', description || '', Number(amount) || 0]
+        );
+        results.push(rows[0]);
+      } catch (err) {
+        errors.push({ index: i, error: err.message });
+      }
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      imported: results.length, 
+      failed: errors.length,
+      errors: errors.length > 0 ? errors : undefined 
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// PUT /api/incomes/:id - Admin only
+router.put('/:id', requireAdmin, async (req, res) => {
   const { trans_date, category, description, amount } = req.body;
   try {
     const { rows } = await query(
@@ -50,8 +86,8 @@ router.put('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
-// DELETE /api/incomes/:id
-router.delete('/:id', async (req, res) => {
+// DELETE /api/incomes/:id - Admin only
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const { rowCount } = await query('DELETE FROM incomes WHERE id=$1', [req.params.id]);
     if (!rowCount) return res.status(404).json({ message: 'Not found' });

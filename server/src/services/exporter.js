@@ -9,25 +9,20 @@ const DEFAULT_TEMPLATE_PATH = path.resolve(process.cwd(), 'templates', 'export_t
 export async function exportData({ type = 'all', format = 'xlsx', templatePath }) {
   const sections = [];
   if (type === 'incomes' || type === 'all') {
-    const { rows } = await query('SELECT * FROM incomes ORDER BY trans_date');
+    const { rows } = await query('SELECT * FROM incomes ORDER BY trans_date DESC');
     sections.push({ name: 'Incomes', rows });
   }
   if (type === 'expenses' || type === 'all') {
-    const { rows } = await query('SELECT * FROM expenses ORDER BY trans_date');
+    const { rows } = await query('SELECT * FROM expenses ORDER BY trans_date DESC');
     sections.push({ name: 'Expenses', rows });
   }
   if (type === 'loans' || type === 'all') {
-    const { rows } = await query('SELECT * FROM loans ORDER BY trans_date');
+    const { rows } = await query('SELECT * FROM loans ORDER BY trans_date DESC');
     sections.push({ name: 'Loans', rows });
   }
 
-  let resolvedTemplate = templatePath || process.env.EXPORT_TEMPLATE_PATH || DEFAULT_TEMPLATE_PATH;
-  if (resolvedTemplate && !fs.existsSync(resolvedTemplate)) {
-    resolvedTemplate = undefined;
-  }
-
   if (format === 'xlsx') {
-    return await buildXlsx(sections, resolvedTemplate);
+    return await buildCompleteExcel(sections);
   }
   if (format === 'pdf') {
     return await buildPdf(sections);
@@ -35,33 +30,325 @@ export async function exportData({ type = 'all', format = 'xlsx', templatePath }
   throw new Error('Unsupported format');
 }
 
-async function buildXlsx(sections, templatePath) {
+/**
+ * Build complete Excel with ALL data matching website display
+ * Creates multiple sheets:
+ * 1. SUMMARY - Overview like Dashboard
+ * 2. PENDAPATAN - All income transactions
+ * 3. PENGELUARAN - All expense transactions  
+ * 4. PINJAMAN - All loan transactions
+ */
+async function buildCompleteExcel(sections) {
   const workbook = new ExcelJS.Workbook();
-  if (templatePath) {
-    try {
-      await workbook.xlsx.readFile(templatePath);
-    } catch (err) {
-      console.warn('Failed to read template, fallback to blank workbook', err);
-    }
-  }
+  
+  const incomes = findSection(sections, 'Incomes');
+  const expenses = findSection(sections, 'Expenses');
+  const loans = findSection(sections, 'Loans');
+  
+  // Calculate totals
+  const totalIncome = sumRows(incomes);
+  const totalExpense = sumRows(expenses);
+  const totalLoans = sumRows(loans);
+  const sisaPendapatan = totalIncome - totalExpense;
+  const sisaKas = sisaPendapatan - totalLoans;
+  
+  // Get date range
+  const allDates = [...incomes, ...expenses, ...loans]
+    .map(r => r.trans_date)
+    .filter(d => d)
+    .sort();
+  const startDate = allDates.length > 0 ? formatDateIndonesian(allDates[0]) : '-';
+  const endDate = allDates.length > 0 ? formatDateIndonesian(allDates[allDates.length - 1]) : '-';
 
-  const sheet = workbook.getWorksheet('Table 1') || workbook.worksheets[0];
-  if (sheet) {
-    applyTemplate({
-      sheet,
-      incomes: findSection(sections, 'Incomes'),
-      expenses: findSection(sections, 'Expenses'),
-      loans: findSection(sections, 'Loans')
-    });
-  } else {
-    sections.forEach(section => {
-      const ws = workbook.addWorksheet(section.name);
-      ws.addRow(Object.keys(section.rows[0] || {}));
-      section.rows.forEach(row => ws.addRow(Object.values(row)));
-    });
-  }
+  // Group by category
+  const incomeByCategory = groupByCategory(incomes);
+  const expenseByCategory = groupByCategory(expenses);
+
+  // Sheet 1: SUMMARY
+  createSummarySheet(workbook, {
+    totalIncome,
+    totalExpense,
+    totalLoans,
+    sisaPendapatan,
+    sisaKas,
+    startDate,
+    endDate,
+    incomeByCategory,
+    expenseByCategory,
+    loans
+  });
+
+  // Sheet 2: PENDAPATAN (ALL income transactions)
+  createDataSheet(workbook, 'PENDAPATAN', incomes, {
+    title: 'LAPORAN PENDAPATAN',
+    subtitle: `${startDate} - ${endDate}`,
+    total: totalIncome,
+    color: '92D050' // Green
+  });
+
+  // Sheet 3: PENGELUARAN (ALL expense transactions)
+  createDataSheet(workbook, 'PENGELUARAN', expenses, {
+    title: 'LAPORAN PENGELUARAN',
+    subtitle: `${startDate} - ${endDate}`,
+    total: totalExpense,
+    color: 'FFC000' // Orange
+  });
+
+  // Sheet 4: PINJAMAN (ALL loan transactions)
+  createDataSheet(workbook, 'PINJAMAN', loans, {
+    title: 'LAPORAN PINJAMAN / HUTANG',
+    subtitle: `${startDate} - ${endDate}`,
+    total: totalLoans,
+    color: 'FF6B6B' // Red
+  });
 
   return workbook.xlsx.writeBuffer();
+}
+
+function createSummarySheet(workbook, data) {
+  const { totalIncome, totalExpense, totalLoans, sisaPendapatan, sisaKas, startDate, endDate, incomeByCategory, expenseByCategory, loans } = data;
+  
+  const sheet = workbook.addWorksheet('SUMMARY');
+  
+  // Column widths
+  sheet.columns = [
+    { width: 5 },
+    { width: 45 },
+    { width: 20 },
+    { width: 5 },
+    { width: 25 },
+    { width: 20 },
+  ];
+
+  // Row 1: Title
+  sheet.mergeCells('A1:F1');
+  const titleCell = sheet.getCell('A1');
+  titleCell.value = 'LAPORAN KEUANGAN PT. DZIKRY MULTI LABA';
+  titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+  sheet.getRow(1).height = 30;
+
+  // Row 2: Date range
+  sheet.mergeCells('A2:F2');
+  const dateCell = sheet.getCell('A2');
+  dateCell.value = `Periode: ${startDate} - ${endDate}`;
+  dateCell.font = { bold: true, size: 12 };
+  dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+  // Row 4: Summary Header
+  let row = 4;
+  sheet.mergeCells(`A${row}:C${row}`);
+  sheet.getCell(`A${row}`).value = 'RINGKASAN KEUANGAN';
+  sheet.getCell(`A${row}`).font = { bold: true, size: 14 };
+  sheet.getCell(`A${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
+  
+  sheet.mergeCells(`E${row}:F${row}`);
+  sheet.getCell(`E${row}`).value = 'REKAP';
+  sheet.getCell(`E${row}`).font = { bold: true, size: 14 };
+  sheet.getCell(`E${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
+
+  // Summary items
+  row = 5;
+  const summaryItems = [
+    ['Total Pendapatan', totalIncome, '92D050'],
+    ['Total Pengeluaran', totalExpense, 'FFC000'],
+    ['Total Pinjaman', totalLoans, 'FF6B6B'],
+    ['Sisa Pendapatan', sisaPendapatan, '00B0F0'],
+    ['Sisa Kas', sisaKas, sisaKas >= 0 ? '92D050' : 'FF0000'],
+  ];
+
+  summaryItems.forEach(([label, value, color], idx) => {
+    sheet.getCell(`B${row + idx}`).value = label;
+    sheet.getCell(`B${row + idx}`).font = { bold: true };
+    sheet.getCell(`C${row + idx}`).value = `Rp ${formatNumber(value)}`;
+    sheet.getCell(`C${row + idx}`).font = { bold: true, color: { argb: `FF${color}` } };
+    sheet.getCell(`C${row + idx}`).alignment = { horizontal: 'right' };
+  });
+
+  // Right side: Category breakdown
+  row = 5;
+  sheet.getCell(`E${row}`).value = 'Pendapatan:';
+  sheet.getCell(`E${row}`).font = { bold: true };
+  row++;
+  
+  Object.entries(incomeByCategory).sort((a, b) => b[1].total - a[1].total).forEach(([cat, data]) => {
+    sheet.getCell(`E${row}`).value = `  ${cat}`;
+    sheet.getCell(`F${row}`).value = `Rp ${formatNumber(data.total)}`;
+    sheet.getCell(`F${row}`).alignment = { horizontal: 'right' };
+    row++;
+  });
+
+  row++;
+  sheet.getCell(`E${row}`).value = 'Pengeluaran:';
+  sheet.getCell(`E${row}`).font = { bold: true };
+  row++;
+
+  Object.entries(expenseByCategory).sort((a, b) => b[1].total - a[1].total).forEach(([cat, data]) => {
+    sheet.getCell(`E${row}`).value = `  ${cat}`;
+    sheet.getCell(`F${row}`).value = `Rp ${formatNumber(data.total)}`;
+    sheet.getCell(`F${row}`).alignment = { horizontal: 'right' };
+    row++;
+  });
+
+  // Catatan Hutang section
+  row = 12;
+  sheet.getCell(`A${row}`).value = '';
+  sheet.getCell(`B${row}`).value = 'CATATAN HUTANG (Yang belum dibayar):';
+  sheet.getCell(`B${row}`).font = { bold: true };
+  sheet.getCell(`B${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+  row++;
+
+  if (loans.length === 0) {
+    sheet.getCell(`B${row}`).value = '  Tidak ada hutang';
+    sheet.getCell(`C${row}`).value = 'Rp 0';
+  } else {
+    loans.forEach((loan, idx) => {
+      sheet.getCell(`B${row}`).value = `  ${idx + 1}. ${loan.category || 'Pinjaman'} - ${(loan.description || '').substring(0, 35)}`;
+      sheet.getCell(`C${row}`).value = `Rp ${formatNumber(loan.amount)}`;
+      sheet.getCell(`C${row}`).alignment = { horizontal: 'right' };
+      row++;
+    });
+  }
+
+  row++;
+  sheet.getCell(`B${row}`).value = 'TOTAL HUTANG';
+  sheet.getCell(`B${row}`).font = { bold: true };
+  sheet.getCell(`B${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+  sheet.getCell(`C${row}`).value = `Rp ${formatNumber(totalLoans)}`;
+  sheet.getCell(`C${row}`).font = { bold: true };
+  sheet.getCell(`C${row}`).alignment = { horizontal: 'right' };
+}
+
+function createDataSheet(workbook, sheetName, data, options) {
+  const { title, subtitle, total, color } = options;
+  const sheet = workbook.addWorksheet(sheetName);
+
+  // Column widths
+  sheet.columns = [
+    { width: 5 },   // NO
+    { width: 15 },  // TANGGAL
+    { width: 15 },  // KATEGORI
+    { width: 50 },  // DESKRIPSI
+    { width: 20 },  // JUMLAH
+  ];
+
+  // Row 1: Title
+  sheet.mergeCells('A1:E1');
+  const titleCell = sheet.getCell('A1');
+  titleCell.value = title;
+  titleCell.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${color}` } };
+  sheet.getRow(1).height = 25;
+
+  // Row 2: Date range
+  sheet.mergeCells('A2:E2');
+  const dateCell = sheet.getCell('A2');
+  dateCell.value = subtitle;
+  dateCell.font = { bold: true };
+  dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+  // Row 3: Total
+  sheet.mergeCells('A3:E3');
+  const totalCell = sheet.getCell('A3');
+  totalCell.value = `TOTAL: Rp ${formatNumber(total)}`;
+  totalCell.font = { bold: true, size: 12 };
+  totalCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  totalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
+
+  // Row 5: Headers
+  const headers = ['NO', 'TANGGAL', 'KATEGORI', 'DESKRIPSI', 'JUMLAH (RP)'];
+  headers.forEach((h, idx) => {
+    const cell = sheet.getCell(5, idx + 1);
+    cell.value = h;
+    cell.font = { bold: true };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
+    cell.border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' }
+    };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+
+  // Data rows
+  data.forEach((item, idx) => {
+    const rowNum = 6 + idx;
+    const row = sheet.getRow(rowNum);
+
+    // NO
+    row.getCell(1).value = idx + 1;
+    row.getCell(1).alignment = { horizontal: 'center' };
+
+    // TANGGAL
+    const date = item.trans_date ? new Date(item.trans_date) : null;
+    row.getCell(2).value = date ? formatDateShort(date) : '-';
+    row.getCell(2).alignment = { horizontal: 'center' };
+
+    // KATEGORI
+    row.getCell(3).value = item.category || '-';
+
+    // DESKRIPSI
+    row.getCell(4).value = item.description || '-';
+
+    // JUMLAH
+    row.getCell(5).value = `Rp ${formatNumber(item.amount)}`;
+    row.getCell(5).alignment = { horizontal: 'right' };
+
+    // Borders
+    for (let c = 1; c <= 5; c++) {
+      row.getCell(c).border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    }
+
+    // Alternate row colors
+    if (idx % 2 === 1) {
+      for (let c = 1; c <= 5; c++) {
+        row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
+      }
+    }
+  });
+
+  // Total row at the end
+  const totalRowNum = 6 + data.length;
+  sheet.mergeCells(`A${totalRowNum}:D${totalRowNum}`);
+  sheet.getCell(`A${totalRowNum}`).value = 'TOTAL';
+  sheet.getCell(`A${totalRowNum}`).font = { bold: true };
+  sheet.getCell(`A${totalRowNum}`).alignment = { horizontal: 'right' };
+  sheet.getCell(`A${totalRowNum}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
+  
+  sheet.getCell(`E${totalRowNum}`).value = `Rp ${formatNumber(total)}`;
+  sheet.getCell(`E${totalRowNum}`).font = { bold: true };
+  sheet.getCell(`E${totalRowNum}`).alignment = { horizontal: 'right' };
+  sheet.getCell(`E${totalRowNum}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
+
+  for (let c = 1; c <= 5; c++) {
+    sheet.getCell(totalRowNum, c).border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' }
+    };
+  }
+}
+
+function groupByCategory(items) {
+  const result = {};
+  items.forEach(item => {
+    const cat = (item.category || 'LAINNYA').toUpperCase();
+    if (!result[cat]) {
+      result[cat] = { items: [], total: 0 };
+    }
+    result[cat].items.push(item);
+    result[cat].total += Number(item.amount || 0);
+  });
+  return result;
 }
 
 function findSection(sections, name) {
@@ -79,7 +366,8 @@ function buildPdf(data) {
       doc.fontSize(16).text(section.name, { underline: true });
       doc.moveDown(0.5);
       section.rows.forEach(r => {
-        doc.fontSize(10).text(`${r.trans_date} | ${r.category} | ${r.description || ''} | ${r.amount}`);
+        const date = r.trans_date ? formatDateShort(new Date(r.trans_date)) : '-';
+        doc.fontSize(10).text(`${date} | ${r.category} | ${r.description || ''} | Rp ${formatNumber(r.amount || 0)}`);
       });
       doc.addPage();
     });
@@ -88,237 +376,30 @@ function buildPdf(data) {
   });
 }
 
-const headerAliasMap = {
-  date: 'trans_date',
-  tanggal: 'trans_date',
-  transdate: 'trans_date',
-  category: 'category',
-  kategori: 'category',
-  description: 'description',
-  deskripsi: 'description',
-  notes: 'description',
-  amount: 'amount',
-  nominal: 'amount',
-  value: 'amount',
-  id: 'id',
-  createdat: 'created_at'
-};
-
-function normalizeHeader(header) {
-  if (!header) return null;
-  return header.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function mapHeaderToKey(header) {
-  const normalized = normalizeHeader(header);
-  if (!normalized) return null;
-  return headerAliasMap[normalized] || normalized;
-}
-
-function applyTemplate({ sheet, incomes, expenses, loans }) {
-  populateIncomeTable(sheet, incomes);
-  populateExpenseTable(sheet, expenses);
-  populateSummaries(sheet, {
-    incomes,
-    expenses,
-    loans
-  });
-  populateLoanNotes(sheet, loans);
-}
-
-function populateIncomeTable(sheet, rows = []) {
-  // Incomes don't have a dedicated table section in the template
-  // They're aggregated and shown in the summary section only
-  // Individual income entries could be added if template is updated
-}
-
-function populateExpenseTable(sheet, rows = []) {
-  const headerRow = findRowIndex(sheet, value => value && value.toString().trim().toUpperCase() === 'NO');
-  if (!headerRow) {
-    console.log('Could not find NO header row');
-    return;
-  }
-  
-  const dataStart = headerRow + 2; // skip header + sub-header (row 6 in template)
-  
-  // Find the first row after dataStart that should NOT be removed
-  // This is typically a row with "Pengeluaran" in column 7 or later
-  let footerRow = dataStart;
-  for (let i = dataStart; i <= sheet.rowCount; i++) {
-    const row = sheet.getRow(i);
-    const col7 = getCellText(row.getCell(7).value);
-    if (includesText(col7, 'pengeluaran') || includesText(col7, 'pendapatan')) {
-      footerRow = i;
-      break;
-    }
-  }
-  
-  const rowsToRemove = Math.max(footerRow - dataStart, 0);
-  if (rowsToRemove) {
-    sheet.spliceRows(dataStart, rowsToRemove);
-  }
-
-  const payload = (rows.length ? rows : []).map((entry, idx) => [
-    idx + 1,
-    formatExpenseLabel(entry),
-    null,
-    null,
-    null,
-    null,
-    null,
-    Number(entry.amount || 0)
-  ]);
-
-  if (payload.length) {
-    sheet.spliceRows(dataStart, 0, ...payload);
-  }
-}
-
-function populateSummaries(sheet, { incomes = [], expenses = [], loans = [] }) {
-  const totalIncome = sumRows(incomes);
-  const totalExpense = sumRows(expenses);
-  const totalLoans = sumRows(loans);
-  const sisaPendapatan = totalIncome - totalExpense;
-  const sisaKas = sisaPendapatan - totalLoans;
-
-  // Update all summary fields
-  updateLabelAndValue(sheet, 'Pendapatan', totalIncome);
-  updateLabelAndValue(sheet, 'Pengeluaran', totalExpense);
-  updateLabelAndValue(sheet, 'Sisa Pendapatan', sisaPendapatan);
-  updateLabelAndValue(sheet, 'Sisa Kas', sisaKas);
-  
-  // Update total hutang if it exists in template
-  if (totalLoans > 0) {
-    updateLabelAndValue(sheet, 'Total Hutang', totalLoans);
-  }
-}
-
-function populateLoanNotes(sheet, loans = []) {
-  const startRow = findRowIndex(sheet, value => includesText(value, 'catatan hutang') && includesText(value, 'belum dibayar'));
-  if (!startRow) return;
-  
-  // Find where loan items should end (before "Total Hutang" or next section)
-  const totalHutangRow = findRowIndex(sheet, value => includesText(value, 'total hutang'), startRow + 1);
-  const nextSection = findRowIndex(sheet, value => includesText(value, 'catatan pembahasan'), startRow + 1);
-  const endRow = totalHutangRow || nextSection;
-  
-  if (endRow) {
-    const removeCount = Math.max(endRow - (startRow + 1), 0);
-    if (removeCount > 0) {
-      sheet.spliceRows(startRow + 1, removeCount);
-    }
-  }
-
-  const payload = (loans.length ? loans : [{ category: 'Tidak ada hutang', amount: 0 }]).map((entry, idx) => {
-    const rowData = new Array(10).fill(null);
-    rowData[1] = formatLoanLabel(entry, idx); // Column B (index 1)
-    rowData[2] = formatRupiahText(entry.amount || 0); // Column C (index 2)
-    return rowData;
-  });
-
-  if (payload.length) {
-    sheet.spliceRows(startRow + 1, 0, ...payload);
-  }
-}
-
-function updateLabelAndValue(sheet, label, amount) {
-  const cells = findCells(sheet, value => includesText(value, label));
-  const formatted = formatRupiahText(amount);
-  
-  cells.forEach(({ row, col }) => {
-    const cell = sheet.getCell(row, col);
-    const currentValue = cell.value;
-    const currentText = getCellText(currentValue);
-    
-    // Check if this is a merged cell with formatted text (like row 3)
-    if (currentText && currentText.includes('Rp')) {
-      // Update the entire formatted string, preserving rich text if needed
-      if (currentValue && currentValue.richText) {
-        cell.value = {
-          richText: [{ font: currentValue.richText[0].font, text: `${label.toUpperCase()} ${formatted}` }]
-        };
-      } else {
-        cell.value = `${label.toUpperCase()} ${formatted}`;
-      }
-    } else if (col === 1) {
-      // Column A - update with formatted text
-      cell.value = `${label.toUpperCase()} ${formatted}`;
-    } else {
-      // Other columns - just update the label, value goes in next column
-      cell.value = label;
-      const valueCell = sheet.getCell(row, col + 1);
-      valueCell.value = Number(amount || 0);
-    }
-  });
-}
-
-function getCellText(cellValue) {
-  if (!cellValue) return '';
-  if (typeof cellValue === 'string') return cellValue;
-  if (typeof cellValue === 'number') return cellValue.toString();
-  if (cellValue.richText) {
-    return cellValue.richText.map(t => t.text).join('');
-  }
-  if (cellValue.text) return cellValue.text;
-  return cellValue.toString();
-}
-
-function findRowIndex(sheet, predicate, startRow = 1) {
-  for (let i = startRow; i <= sheet.rowCount; i++) {
-    const row = sheet.getRow(i);
-    if (!row) continue;
-    for (let j = 1; j <= row.cellCount; j++) {
-      const cellValue = row.getCell(j).value;
-      const textValue = getCellText(cellValue);
-      if (predicate(textValue, i, j)) {
-        return i;
-      }
-    }
-  }
-  return null;
-}
-
-function findCells(sheet, predicate) {
-  const cells = [];
-  sheet.eachRow((row, rowNumber) => {
-    row.eachCell((cell, colNumber) => {
-      const textValue = getCellText(cell.value);
-      if (predicate(textValue, rowNumber, colNumber)) {
-        cells.push({ row: rowNumber, col: colNumber });
-      }
-    });
-  });
-  return cells;
-}
-
-function includesText(value, keyword) {
-  if (!value || !keyword) return false;
-  return value.toString().toLowerCase().includes(keyword.toLowerCase());
-}
-
 function sumRows(rows) {
   return rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
 }
 
-function formatRupiahText(value) {
+function formatNumber(value) {
   const numeric = Number(value || 0);
-  const formatter = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
-  return formatter.format(numeric);
+  return numeric.toLocaleString('id-ID');
 }
 
-function formatExpenseLabel(entry) {
-  const base = entry.category || 'Tidak ada kategori';
-  if (entry.description) {
-    return `${base} - ${entry.description}`;
-  }
-  if (entry.trans_date) {
-    return `${base} (${entry.trans_date})`;
-  }
-  return base;
+function formatDateIndonesian(dateStr) {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  
+  const months = ['JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 
+                  'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
+  
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-function formatLoanLabel(entry, idx) {
-  const base = entry.category || 'Hutang';
-  const desc = entry.description ? ` - ${entry.description}` : '';
-  return `${idx + 1}. ${base}${desc}`;
+function formatDateShort(date) {
+  if (!date || isNaN(date.getTime())) return '-';
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 }
