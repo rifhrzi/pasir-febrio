@@ -14,31 +14,15 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // CORS Configuration - Allow all origins for flexibility
-// For production, you can set FRONTEND_URL env variable to restrict
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || true, // true = allow all origins
+  origin: true, // Allow all origins
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 };
 
 // Middleware
-<<<<<<< HEAD
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'https://pasir-finance.vercel.app',
-    'https://pasir-finance.netlify.app',
-    process.env.FRONTEND_URL
-  ].filter(Boolean),
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-=======
 app.use(cors(corsOptions));
->>>>>>> b29350391e7a61cd36fcc34fc8423eed01b56f48
 app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/incomes', incomesRouter);
