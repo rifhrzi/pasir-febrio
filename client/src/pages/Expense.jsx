@@ -2,8 +2,7 @@ import Layout from '../components/Layout.jsx';
 import DataFilter from '../components/DataFilter.jsx';
 import ExportButton, { exportFromServer } from '../components/ExcelExport.jsx';
 import { useEffect, useState, useCallback } from 'react';
-import axios from 'axios';
-import { API_BASE_URL } from '../config.js';
+import { expenseService } from '../services/api.js';
 
 const expensePresets = [
   { label: 'Alat', hint: 'Biaya peralatan dan maintenance' },
@@ -37,25 +36,8 @@ const parseFormattedNumber = (value) => {
 };
 
 export default function Expense() {
-  const token = localStorage.getItem('token');
   const userRole = localStorage.getItem('userRole') || 'admin';
   const isAdmin = userRole === 'admin';
-  const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
-
-  useEffect(() => {
-    if (!token) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    }
-  }, [token]);
-
-  const handleAuthError = error => {
-    if (error?.response && [401, 403].includes(error.response.status)) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    }
-    throw error;
-  };
 
   const [items, setItems] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
@@ -81,10 +63,11 @@ export default function Expense() {
 
   const fetchItems = async () => {
     try {
-      const { data } = await api.get('/expenses');
-      setItems(Array.isArray(data) ? data : []);
+      const { data } = await expenseService.getAll();
+      const items = data?.data || data || [];
+      setItems(Array.isArray(items) ? items : []);
     } catch (err) {
-      handleAuthError(err);
+      console.error('Error fetching expenses:', err);
     }
   };
 
@@ -153,7 +136,7 @@ export default function Expense() {
         amount: Number(form.amount || 0),
         proof_image: form.proof_image || null
       };
-      await api.post('/expenses', payload);
+      await expenseService.create(payload);
       setForm({
         trans_date: '',
         category: expensePresets[0]?.label || '',
@@ -170,16 +153,16 @@ export default function Expense() {
       if (fileInput) fileInput.value = '';
       fetchItems();
     } catch (err) {
-      handleAuthError(err);
+      console.error('Error creating expense:', err);
     }
   };
 
   const handleDelete = async id => {
     try {
-      await api.delete(`/expenses/${id}`);
+      await expenseService.delete(id);
       fetchItems();
     } catch (err) {
-      handleAuthError(err);
+      console.error('Error deleting expense:', err);
     }
   };
 

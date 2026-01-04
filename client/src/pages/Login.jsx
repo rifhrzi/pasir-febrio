@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../config.js';
+import { authService } from '../services/api.js';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -16,9 +15,11 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const { data } = await axios.post(`${API_BASE_URL}/auth/login`, { username, password });
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('userRole', data.role || 'admin');
+      const { data } = await authService.login(username, password);
+      // Handle new response format
+      const responseData = data?.data || data;
+      localStorage.setItem('token', responseData.token);
+      localStorage.setItem('userRole', responseData.role || 'admin');
       localStorage.setItem('username', username);
       setShowSplash(true);
       setTimeout(() => {

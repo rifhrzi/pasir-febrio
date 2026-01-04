@@ -2,8 +2,7 @@ import Layout from '../components/Layout.jsx';
 import DataFilter from '../components/DataFilter.jsx';
 import ExportButton, { exportFromServer } from '../components/ExcelExport.jsx';
 import { useEffect, useState, useCallback } from 'react';
-import axios from 'axios';
-import { API_BASE_URL } from '../config.js';
+import { loanService } from '../services/api.js';
 
 const loansPresets = [
   { label: 'Pra-penjualan: Deposit 350jt (1.000 rit tronton)', hint: 'Pinjaman dari orang tua' },
@@ -38,25 +37,8 @@ const parseFormattedNumber = (value) => {
 };
 
 export default function Loans() {
-  const token = localStorage.getItem('token');
   const userRole = localStorage.getItem('userRole') || 'admin';
   const isAdmin = userRole === 'admin';
-  const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
-
-  useEffect(() => {
-    if (!token) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    }
-  }, [token]);
-
-  const handleAuthError = error => {
-    if (error?.response && [401, 403].includes(error.response.status)) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    }
-    throw error;
-  };
 
   const [items, setItems] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
@@ -79,10 +61,11 @@ export default function Loans() {
 
   const fetchItems = async () => {
     try {
-      const { data } = await api.get('/loans');
-      setItems(Array.isArray(data) ? data : []);
+      const { data } = await loanService.getAll();
+      const items = data?.data || data || [];
+      setItems(Array.isArray(items) ? items : []);
     } catch (err) {
-      handleAuthError(err);
+      console.error('Error fetching loans:', err);
     }
   };
 
@@ -104,7 +87,7 @@ export default function Loans() {
         description: form.description,
         amount: Number(form.amount || 0)
       };
-      await api.post('/loans', payload);
+      await loanService.create(payload);
       setForm({
         trans_date: '',
         category: loansPresets[0]?.label || '',
@@ -116,16 +99,16 @@ export default function Loans() {
       setCustomCategory('');
       fetchItems();
     } catch (err) {
-      handleAuthError(err);
+      console.error('Error creating loan:', err);
     }
   };
 
   const handleDelete = async id => {
     try {
-      await api.delete(`/loans/${id}`);
+      await loanService.delete(id);
       fetchItems();
     } catch (err) {
-      handleAuthError(err);
+      console.error('Error deleting loan:', err);
     }
   };
 

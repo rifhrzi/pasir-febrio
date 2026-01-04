@@ -1,11 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import authRouter from './routes/auth.js';
-import incomesRouter from './routes/incomes.js';
-import expensesRouter from './routes/expenses.js';
-import loansRouter from './routes/loans.js';
-import exportRouter from './routes/export.js';
+import routes from './routes/index.js';
+import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 
 // Load environment variables
 dotenv.config();
@@ -15,26 +12,22 @@ const PORT = process.env.PORT || 4000;
 
 // Middleware - CORS must be first
 app.use(cors({
-  origin: '*', // Allow all origins
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: false // Set to false when using origin: '*'
+  credentials: false
 }));
 
-// Handle preflight requests explicitly
 app.options('*', cors());
 
 app.use(express.json());
-app.use('/api/auth', authRouter);
-app.use('/api/incomes', incomesRouter);
-app.use('/api/expenses', expensesRouter);
-app.use('/api/loans', loansRouter);
-app.use('/api/export', exportRouter);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+// Mount all API routes
+app.use('/api', routes);
+
+// Error handling middleware (must be last)
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 // Start server
 app.listen(PORT, () => {

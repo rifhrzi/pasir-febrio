@@ -2,8 +2,7 @@ import Layout from '../components/Layout.jsx';
 import ExportButton, { exportFromServer } from '../components/ExcelExport.jsx';
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
-import { API_BASE_URL } from '../config.js';
+import { incomeService, expenseService, loanService } from '../services/api.js';
 
 // Simple Pie Chart Component
 function PieChart({ data, size = 200 }) {
@@ -102,9 +101,6 @@ const isInTimeRange = (dateStr, filter) => {
 };
 
 export default function Dashboard() {
-  const token = localStorage.getItem('token');
-  const api = axios.create({ baseURL: API_BASE_URL, headers: { Authorization: `Bearer ${token}` } });
-
   const [incomes, setIncomes] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [loans, setLoans] = useState([]);
@@ -112,30 +108,25 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
 
-  useEffect(() => {
-    if (!token) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    }
-  }, [token]);
-
   const fetchData = async () => {
     setLoading(true);
     try {
       const [incomesRes, expensesRes, loansRes] = await Promise.all([
-        api.get('/incomes'),
-        api.get('/expenses'),
-        api.get('/loans')
+        incomeService.getAll(),
+        expenseService.getAll(),
+        loanService.getAll()
       ]);
 
-      setIncomes(Array.isArray(incomesRes.data) ? incomesRes.data : []);
-      setExpenses(Array.isArray(expensesRes.data) ? expensesRes.data : []);
-      setLoans(Array.isArray(loansRes.data) ? loansRes.data : []);
+      // Handle new response format (data wrapped in success/data)
+      const incomesData = incomesRes.data?.data || incomesRes.data || [];
+      const expensesData = expensesRes.data?.data || expensesRes.data || [];
+      const loansData = loansRes.data?.data || loansRes.data || [];
+
+      setIncomes(Array.isArray(incomesData) ? incomesData : []);
+      setExpenses(Array.isArray(expensesData) ? expensesData : []);
+      setLoans(Array.isArray(loansData) ? loansData : []);
     } catch (err) {
-      if (err?.response && [401, 403].includes(err.response.status)) {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-      }
+      console.error('Error fetching data:', err);
     } finally {
       setLoading(false);
     }
